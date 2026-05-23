@@ -69,7 +69,6 @@ export default function Watchlist() {
   const tickers = assets.map((a) => a.ticker);
 
   const handleRefresh = async () => {
-    if (!hasApiKey()) return;
     setLoading(true);
     setFetchError(null);
     setInjected(new Set());
@@ -108,7 +107,8 @@ export default function Watchlist() {
   const inject = (ticker) => {
     const d = mktData[ticker];
     if (!d || d.nonTradeable) return;
-    const sector = universeSector[ticker.toUpperCase()]; // undefined si no está en el universo
+    // Prioridad: sector del API Finnhub > sector del universo curado
+    const sector = d.sector || universeSector[ticker.toUpperCase()];
     applyHistoricalData(ticker, d.vol90, d.beta90, sector);
     setInjected((prev) => new Set([...prev, ticker]));
   };
@@ -122,45 +122,19 @@ export default function Watchlist() {
     return d && !d.nonTradeable && !d.error && (d.vol90 != null || d.beta90 != null);
   });
 
-  const noKey = !hasApiKey();
-
   return (
     <div>
-      {/* BANNER — API key faltante */}
-      {noKey && (
-        <div style={{ ...panel, borderColor: C.accent, marginBottom: 16, padding: "14px 18px" }}>
-          <div style={{ fontSize: 12, color: C.accent, fontWeight: 600, marginBottom: 8 }}>
-            ⚠ VITE_FINNHUB_KEY no configurada
-          </div>
-          <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.7 }}>
-            1. Registrate gratis en{" "}
-            <span style={{ color: C.blue }}>finnhub.io/register</span>
-            {" "}→ copiá tu API key.<br />
-            2. Creá el archivo{" "}
-            <code style={{ color: C.text, background: C.panel2, padding: "1px 4px", borderRadius: 3 }}>.env.local</code>
-            {" "}en la raíz del proyecto:<br />
-            <code style={{ color: C.pos, display: "block", marginTop: 4, padding: "6px 10px", background: C.panel2, borderRadius: 4 }}>
-              VITE_FINNHUB_KEY=tu_key_aqui
-            </code>
-            3. Reiniciá el servidor ({" "}
-            <code style={{ color: C.text }}>npm run dev</code>
-            {" "}) para que tome la variable.
-          </div>
-        </div>
-      )}
-
       {/* CONTROLES */}
       <div style={{ ...panel, display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <button
           className="dione-hover"
           onClick={handleRefresh}
-          disabled={loading || noKey}
+          disabled={loading}
           style={{
             ...btn,
             color: loading ? C.muted : C.accent,
             borderColor: loading ? C.border : C.accent,
-            cursor: loading || noKey ? "not-allowed" : "pointer",
-            opacity: noKey ? 0.45 : 1,
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Actualizando…" : "↻ Actualizar precios"}
