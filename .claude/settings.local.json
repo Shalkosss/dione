@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(dir C:\\\\Users\\\\USER\\\\Downloads\\\\dione-web_1 /b /a)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\USER\\\\Downloads\\\\dione-web_1\" | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, LastWriteTime)"
+    ]
+  }
+}

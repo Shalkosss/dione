@@ -1,0 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #0d0e11;
+  color: #dfe1e6;
+  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace,
+    Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.25;
+}
+
+input:focus,
+select:focus {
+  outline: 1px solid #f4b740;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.dione-hover:hover {
+  filter: brightness(1.18);
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: #0d0e11;
+}
+::-webkit-scrollbar-thumb {
+  background: #262a33;
+  border-radius: 5px;
+}
