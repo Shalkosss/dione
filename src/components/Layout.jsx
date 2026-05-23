@@ -5,9 +5,10 @@ import { C, mono } from "../theme.js";
 const NAV = [
   { to: "/", label: "Optimizer", phase: 1 },
   { to: "/risk", label: "Risk Engine", phase: 1 },
+  { to: "/chart", label: "Chart", phase: 1 },
+  { to: "/watchlist", label: "Watchlist", phase: 1 },
   { to: "/thesis", label: "Thesis Log", phase: 1 },
   { to: "/screener", label: "Screener", phase: 1 },
-  { to: "/watchlist", label: "Watchlist", phase: 1 },
 ];
 
 export default function Layout({ children }) {

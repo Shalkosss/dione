@@ -4,6 +4,11 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+finhub.env
+supabase.env
+*.env
 .DS_Store
 *.log
+.vercel
+
 .vercel
