@@ -124,6 +124,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, ...snapshot.meta });
   } catch (e) {
     console.error('[refresh-gems]', e);
-    return res.status(500).json({ error: e.message, ms: Date.now() - t0 });
+    // TEMPORAL: 200 para que el body del error no se descarte en tránsito.
+    return res.status(200).json({ ok: false, error: e.message, stack: (e.stack || '').split('\n').slice(0, 4), ms: Date.now() - t0 });
   }
 }
