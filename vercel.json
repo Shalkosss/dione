@@ -1,13 +1,12 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm install",
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 30
+  "crons": [
+    {
+      "path": "/api/cron/refresh-gems",
+      "schedule": "0 9 * * *"
     }
-  },
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/cron/refresh-gems.js": { "maxDuration": 60 },
+    "api/screener.js": { "maxDuration": 10 }
+  }
 }
