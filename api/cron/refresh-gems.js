@@ -1,14 +1,19 @@
 // api/cron/refresh-gems.js — Precompute del universo Tier-3 (hidden gems).
 //
-// Fuentes 100% gratis: NASDAQ (universo + cap + precio) y SEC EDGAR (XBRL).
-// Como EDGAR vía "frames" trae todas las empresas en ~15 llamadas, NO hay
-// rotación por chunks: cada corrida recomputa el universo COMPLETO en <60s.
+// Fuentes 100% gratis y reachable desde la nube:
+//   SEC EDGAR (XBRL) → universo + fundamentales + acciones en circulación.
+//   Stooq           → precio + nombre (el XBRL no tiene cotización).
+// market cap = precio × acciones. (NASDAQ se descartó: bloquea IPs de nube.)
 //
-// Disparado por Vercel Cron 1x/día. Cron triggers = GET, protegido por
-// CRON_SECRET (Vercel lo manda como `Authorization: Bearer <secret>`).
+// EDGAR vía "frames" trae todas las empresas en pocas llamadas → recomputa el
+// universo COMPLETO en una corrida (<60s), sin rotación por chunks.
+//
+// Disparado por Vercel Cron 1x/día (GET), protegido por CRON_SECRET.
 
-import { fetchUniverse } from '../../lib/nasdaq.js';
-import { fetchTickerCikMap, fetchRawFactsByCik, computeMetrics } from '../../lib/edgar.js';
+import {
+  fetchTickerCikMap, fetchRawFactsByCik, fetchSharesByCik, computeMetrics,
+} from '../../lib/edgar.js';
+import { fetchPrices } from '../../lib/stooq.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
 import { writeSnapshot } from '../../lib/store.js';
 
@@ -22,38 +27,55 @@ export default async function handler(req, res) {
 
   const t0 = Date.now();
   try {
-    // 1) universo dinámico (NASDAQ) + mapa ticker→CIK + facts XBRL (EDGAR)
-    const [universe, cikMap, edgar] = await Promise.all([
-      fetchUniverse(),
+    // 1) EDGAR en paralelo: mapa ticker→cik, fundamentales, acciones
+    const year = process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined;
+    const [cikMap, edgar, sharesByCik] = await Promise.all([
       fetchTickerCikMap(),
-      fetchRawFactsByCik({ year: process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined }),
+      fetchRawFactsByCik({ year }),
+      fetchSharesByCik(),
     ]);
 
-    if (!universe.length) {
-      return res.status(502).json({ error: 'universo NASDAQ vacío — revisar api.nasdaq.com' });
+    if (!edgar.coverage) {
+      return res.status(502).json({ error: 'EDGAR sin datos — revisar SEC_USER_AGENT o data.sec.gov' });
     }
 
-    // 2) cruzar: para cada ticker del universo, buscar sus facts por CIK
+    // cik → ticker (primer ticker por cik)
+    const cikToTicker = new Map();
+    for (const [t, c] of cikMap) if (!cikToTicker.has(c)) cikToTicker.set(c, t);
+
+    // 2) PASS 1 — quality gate con métricas cap-independientes (ROE, FCF, D/E).
+    //    Esto filtra ~5k empresas a unos cientos sin necesitar precio todavía.
+    const passers = [];
+    for (const [cik, raw] of edgar.facts) {
+      const ticker = cikToTicker.get(cik);
+      if (!ticker) continue; // sin ticker mapeado (no cotiza, etc.)
+      const f0 = computeMetrics(ticker, raw);
+      if (qualityGate(f0).pass) passers.push({ ticker, cik, raw });
+    }
+
+    // 3) precio de los que pasan (Stooq, en batches) → market cap
+    const prices = await fetchPrices(passers.map((p) => p.ticker));
+
     const now = Date.now();
     const gems = {};
-    let withFacts = 0, passing = 0;
-
-    for (const u of universe) {
-      const cik = cikMap.get(u.symbol);
-      const raw = cik != null ? edgar.facts.get(cik) : null;
-      if (!raw) continue; // sin datos SEC (ADR extranjero, sin filings, etc.)
-      withFacts++;
-
-      const f = computeMetrics(u.symbol, raw, u.marketCap, u.price);
-      const gate = qualityGate(f);
-      if (gate.pass) passing++;
-
-      gems[u.symbol] = {
-        ...u,
+    let priced = 0;
+    for (const p of passers) {
+      const pr = prices.get(p.ticker);
+      const shares = sharesByCik.get(p.cik) ?? null;
+      const cap = pr?.price != null && shares != null ? pr.price * shares : null;
+      if (cap != null) priced++;
+      const f = computeMetrics(p.ticker, p.raw, cap, pr?.price ?? null);
+      gems[p.ticker] = {
+        symbol: p.ticker,
+        name: pr?.name ?? null,
+        sector: null, // EDGAR/Stooq no lo dan acá; se enriquece en /deep
+        marketCap: cap,
+        price: pr?.price ?? null,
+        sharesOutstanding: shares,
         ...f,
-        gatePass: gate.pass,
-        gateReasons: gate.reasons,
-        preScore: gate.pass ? preScore(f) : null,
+        gatePass: true,
+        gateReasons: [],
+        preScore: preScore(f),
         lastChecked: now,
       };
     }
@@ -63,13 +85,12 @@ export default async function handler(req, res) {
       meta: {
         updatedAt: new Date().toISOString(),
         fiscalYear: edgar.year,
-        universeCount: universe.length,
         secCoverage: edgar.coverage,
-        withFacts,
-        passing,
+        gatePassers: passers.length,
+        priced,
         totalTracked: Object.keys(gems).length,
         ms: Date.now() - t0,
-        sources: { universe: 'nasdaq', fundamentals: 'sec-edgar-xbrl' },
+        sources: { fundamentals: 'sec-edgar-xbrl', price: 'stooq' },
       },
     };
 
