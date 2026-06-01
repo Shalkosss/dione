@@ -9,6 +9,7 @@ const NAV = [
   { to: "/watchlist", label: "Watchlist", phase: 1 },
   { to: "/thesis", label: "Thesis Log", phase: 1 },
   { to: "/screener", label: "Screener", phase: 1 },
+  { to: "/hidden-gems", label: "Hidden Gems", phase: 1 },
 ];
 
 export default function Layout({ children }) {

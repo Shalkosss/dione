@@ -11,6 +11,7 @@ const Risk = lazy(() => import("./pages/Risk.jsx"));
 const Chart = lazy(() => import("./pages/Chart.jsx"));
 const Watchlist = lazy(() => import("./pages/Watchlist.jsx"));
 const Screener = lazy(() => import("./pages/Screener.jsx"));
+const HiddenGems = lazy(() => import("./pages/HiddenGems.jsx"));
 const Thesis = lazy(() => import("./pages/Thesis.jsx"));
 
 const Loading = () => (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/chart" element={<Chart />} />
           <Route path="/thesis" element={<Thesis />} />
           <Route path="/screener" element={<Screener />} />
+          <Route path="/hidden-gems" element={<HiddenGems />} />
           <Route path="/watchlist" element={<Watchlist />} />
         </Routes>
       </Suspense>
