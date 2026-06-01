@@ -26,6 +26,32 @@ export default async function handler(req, res) {
   }
 
   const t0 = Date.now();
+
+  // --- DIAGNÓSTICO: /api/cron/refresh-gems?probe=ping|tickers|edgar|stooq ---
+  // Aísla cada fuente para detectar timeouts/bloqueos desde la nube. Borrar
+  // cuando el pipeline esté estable.
+  const probe = (req.query && req.query.probe) || '';
+  if (probe) {
+    try {
+      if (probe === 'ping') return res.status(200).json({ ok: true, probe, ms: Date.now() - t0 });
+      if (probe === 'tickers') {
+        const m = await fetchTickerCikMap();
+        return res.status(200).json({ ok: true, probe, size: m.size, ms: Date.now() - t0 });
+      }
+      if (probe === 'stooq') {
+        const p = await fetchPrices(['AAPL', 'CRMD', 'ADMA']);
+        return res.status(200).json({ ok: true, probe, got: [...p.entries()], ms: Date.now() - t0 });
+      }
+      if (probe === 'edgar') {
+        const e = await fetchRawFactsByCik({});
+        return res.status(200).json({ ok: true, probe, coverage: e.coverage, year: e.year, ms: Date.now() - t0 });
+      }
+      return res.status(400).json({ error: 'probe inválido', got: probe });
+    } catch (e) {
+      return res.status(500).json({ error: e.message, probe, ms: Date.now() - t0 });
+    }
+  }
+
   try {
     // 1) EDGAR en paralelo: mapa ticker→cik, fundamentales, acciones
     const year = process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined;
