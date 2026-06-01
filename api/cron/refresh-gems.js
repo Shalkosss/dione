@@ -1,26 +1,20 @@
-// api/cron/refresh-gems.js — Precompute del universo Tier-3.
+// api/cron/refresh-gems.js — Precompute del universo Tier-3 (hidden gems).
 //
-// Disparado por Vercel Cron 1x/día (Hobby permite solo diario). Como FMP free
-// limita ~250 req/día, NO refresca todo el universo de una: procesa un CHUNK
-// rotatorio (los más viejos primero) y completa la vuelta en pocos días. Con
-// FMP pago + endpoints bulk podés subir CHUNK y refrescar todo en 1 corrida
-// (ver README, sección "Plan pago").
+// Fuentes 100% gratis: NASDAQ (universo + cap + precio) y SEC EDGAR (XBRL).
+// Como EDGAR vía "frames" trae todas las empresas en ~15 llamadas, NO hay
+// rotación por chunks: cada corrida recomputa el universo COMPLETO en <60s.
 //
-// Cron triggers = GET. Protegido por CRON_SECRET (Vercel lo auto-provisiona y
-// lo manda como `Authorization: Bearer <secret>`).
+// Disparado por Vercel Cron 1x/día. Cron triggers = GET, protegido por
+// CRON_SECRET (Vercel lo manda como `Authorization: Bearer <secret>`).
 
-import { fetchUniverse, fetchFundamentals, fetchScore, mapLimit, sleep } from '../../lib/fmp.js';
+import { fetchUniverse } from '../../lib/nasdaq.js';
+import { fetchTickerCikMap, fetchRawFactsByCik, computeMetrics } from '../../lib/edgar.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
-import { readSnapshot, writeSnapshot } from '../../lib/store.js';
+import { writeSnapshot } from '../../lib/store.js';
 
-export const config = { maxDuration: 60 }; // 300 si tenés Fluid Compute activo
-
-const CHUNK = Number(process.env.GEMS_CHUNK || 200);   // tickers por corrida
-const CONCURRENCY = Number(process.env.GEMS_CONCURRENCY || 5);
-const USE_SCORE = process.env.GEMS_USE_SCORE === '1';  // enriquecer con Altman/Piotroski
+export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
-  // --- auth: solo el cron de Vercel (o vos con el secret) puede dispararlo ---
   const auth = req.headers.authorization || '';
   if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -28,35 +22,33 @@ export default async function handler(req, res) {
 
   const t0 = Date.now();
   try {
-    // 1) universo (filtros duros server-side, 1-2 llamadas baratas)
-    const universe = await fetchUniverse();
+    // 1) universo dinámico (NASDAQ) + mapa ticker→CIK + facts XBRL (EDGAR)
+    const [universe, cikMap, edgar] = await Promise.all([
+      fetchUniverse(),
+      fetchTickerCikMap(),
+      fetchRawFactsByCik({ year: process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined }),
+    ]);
+
     if (!universe.length) {
-      return res.status(502).json({ error: 'universe vacío — revisar FMP_API_KEY o límites' });
+      return res.status(502).json({ error: 'universo NASDAQ vacío — revisar api.nasdaq.com' });
     }
 
-    // 2) snapshot previo (para refresco rotatorio)
-    const prev = (await readSnapshot()) || { gems: {}, meta: {} };
-    const prevGems = prev.gems || {};
-
-    // 3) elegir el chunk: los símbolos del universo con lastChecked más viejo
-    const ranked = universe
-      .map((u) => ({ u, last: prevGems[u.symbol]?.lastChecked || 0 }))
-      .sort((a, b) => a.last - b.last)
-      .slice(0, CHUNK)
-      .map((x) => x.u);
-
-    // 4) traer fundamentales del chunk con concurrencia limitada
+    // 2) cruzar: para cada ticker del universo, buscar sus facts por CIK
     const now = Date.now();
-    const results = await mapLimit(ranked, CONCURRENCY, async (u) => {
-      const f = await fetchFundamentals(u.symbol);
-      if (!f) return { symbol: u.symbol, __skip: true };
-      if (USE_SCORE) {
-        const sc = await fetchScore(u.symbol);
-        if (sc) Object.assign(f, sc);
-        await sleep(120); // respiro extra por la llamada adicional
-      }
+    const gems = {};
+    let withFacts = 0, passing = 0;
+
+    for (const u of universe) {
+      const cik = cikMap.get(u.symbol);
+      const raw = cik != null ? edgar.facts.get(cik) : null;
+      if (!raw) continue; // sin datos SEC (ADR extranjero, sin filings, etc.)
+      withFacts++;
+
+      const f = computeMetrics(u.symbol, raw, u.marketCap, u.price);
       const gate = qualityGate(f);
-      return {
+      if (gate.pass) passing++;
+
+      gems[u.symbol] = {
         ...u,
         ...f,
         gatePass: gate.pass,
@@ -64,29 +56,20 @@ export default async function handler(req, res) {
         preScore: gate.pass ? preScore(f) : null,
         lastChecked: now,
       };
-    });
-
-    // 5) merge en el snapshot (mantener lo no refrescado este run)
-    const gems = { ...prevGems };
-    let refreshed = 0, passing = 0;
-    for (const r of results) {
-      if (!r || r.__skip || r.__error) continue;
-      gems[r.symbol] = r;
-      refreshed++;
-      if (r.gatePass) passing++;
     }
 
     const snapshot = {
       gems,
       meta: {
         updatedAt: new Date().toISOString(),
+        fiscalYear: edgar.year,
         universeCount: universe.length,
+        secCoverage: edgar.coverage,
+        withFacts,
+        passing,
         totalTracked: Object.keys(gems).length,
-        refreshedThisRun: refreshed,
-        passingThisRun: passing,
-        chunk: CHUNK,
-        useScore: USE_SCORE,
         ms: Date.now() - t0,
+        sources: { universe: 'nasdaq', fundamentals: 'sec-edgar-xbrl' },
       },
     };
 
