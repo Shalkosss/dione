@@ -55,9 +55,10 @@ export default async function handler(req, res) {
 
     // precios + sectores en paralelo
     const tickerList = passers.map((p) => p.ticker);
+    const cikBySymbol = new Map(passers.map((p) => [p.ticker, p.cik]));
     const [prices, sectorMap] = await Promise.all([
       fetchPrices(tickerList),
-      enrichSectors(tickerList).catch((e) => {
+      enrichSectors(tickerList, { cikBySymbol }).catch((e) => {
         console.warn('[refresh-gems] sector enrichment falló:', e.message);
         return new Map();
       }),
