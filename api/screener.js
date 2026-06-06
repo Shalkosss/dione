@@ -106,6 +106,7 @@ export default async function handler(req, res) {
         debtToEquity: r.debtToEquity, currentRatio: r.currentRatio,
         grossMargin: r.grossMargin, netMargin: r.netMargin, pe: r.pe,
         altmanZ: r.altmanZ ?? null,
+        altmanModel: r.altmanModel ?? null,
         piotroski: r.piotroski ?? null,
         piotroskiPartial: r.piotroskiPartial ?? null,
         rsi: r.rsi ?? null,
