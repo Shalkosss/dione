@@ -11,7 +11,7 @@
 import {
   fetchTickerCikMap, fetchRawFactsByCik, fetchSharesByCik, computeMetrics,
 } from '../../lib/edgar.js';
-import { fetchPrices } from '../../lib/stooq.js';
+import { fetchPrices } from '../../lib/prices.js';
 import { enrichSectors } from '../../lib/finnhub.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
 import { writeSnapshot } from '../../lib/store.js';
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
       if (meta?.sector) withSector++;
       gems[p.ticker] = {
         symbol: p.ticker,
-        name: pr?.name ?? null,
+        name: pr?.name ?? meta?.name ?? null,
         sector: meta?.sector ?? null,
         industry: meta?.industry ?? null,
         marketCap: cap,
