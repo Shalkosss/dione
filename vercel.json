@@ -3,10 +3,15 @@
     {
       "path": "/api/cron/refresh-gems",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-technical",
+      "schedule": "0 10 * * *"
     }
   ],
   "functions": {
-    "api/cron/refresh-gems.js": { "maxDuration": 60 },
+    "api/cron/refresh-gems.js": { "maxDuration": 300 },
+    "api/cron/refresh-technical.js": { "maxDuration": 300 },
     "api/screener.js": { "maxDuration": 10 }
   }
 }
