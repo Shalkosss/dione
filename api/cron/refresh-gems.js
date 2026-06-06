@@ -104,7 +104,11 @@ export default async function handler(req, res) {
         nullDebtCount: nullDebt,
         totalTracked: Object.keys(gems).length,
         ms: Date.now() - t0,
-        sources: { fundamentals: 'sec-edgar-xbrl', price: 'stooq', sector: 'finnhub' },
+        sources: {
+          fundamentals: 'sec-edgar-xbrl',
+          price: 'finnhub+yahoo',
+          sector: 'finnhub+sec-submissions',
+        },
       },
     };
 
