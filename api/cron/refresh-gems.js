@@ -2,11 +2,9 @@
 //
 // Fuentes 100% gratis y reachable desde la nube:
 //   SEC EDGAR (XBRL) → universo + fundamentales + acciones en circulación.
-//   Stooq           → precio + nombre (el XBRL no tiene cotización).
-// market cap = precio × acciones. (NASDAQ se descartó: bloquea IPs de nube.)
-//
-// EDGAR vía "frames" trae todas las empresas en pocas llamadas → recomputa el
-// universo COMPLETO en una corrida (<60s), sin rotación por chunks.
+//   Stooq           → precio + nombre.
+//   Finnhub         → sector/industry (enriquecimiento, cache 30d).
+// market cap = precio × acciones.
 //
 // Disparado por Vercel Cron 1x/día (GET), protegido por CRON_SECRET.
 
@@ -14,10 +12,11 @@ import {
   fetchTickerCikMap, fetchRawFactsByCik, fetchSharesByCik, computeMetrics,
 } from '../../lib/edgar.js';
 import { fetchPrices } from '../../lib/stooq.js';
+import { enrichSectors } from '../../lib/finnhub.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
 import { writeSnapshot } from '../../lib/store.js';
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
 
 export default async function handler(req, res) {
   const auth = req.headers.authorization || '';
@@ -28,7 +27,6 @@ export default async function handler(req, res) {
   const t0 = Date.now();
 
   try {
-    // 1) EDGAR en paralelo: mapa ticker→cik, fundamentales, acciones
     const year = process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined;
     const [cikMap, edgar, sharesByCik] = await Promise.all([
       fetchTickerCikMap(),
@@ -37,39 +35,51 @@ export default async function handler(req, res) {
     ]);
 
     if (!edgar.coverage) {
-      return res.status(502).json({ error: 'EDGAR sin datos — revisar SEC_USER_AGENT o data.sec.gov' });
+      return res.status(502).json({ error: 'EDGAR sin datos — revisar SEC_USER_AGENT' });
     }
 
-    // cik → ticker (primer ticker por cik)
     const cikToTicker = new Map();
     for (const [t, c] of cikMap) if (!cikToTicker.has(c)) cikToTicker.set(c, t);
 
-    // 2) PASS 1 — quality gate con métricas cap-independientes (ROE, FCF, D/E).
-    //    Esto filtra ~5k empresas a unos cientos sin necesitar precio todavía.
+    // PASS 1 — quality gate. computeMetrics ya devuelve debtToEquity correcto
+    // (LongTermDebt+ShortTermDebt)/Equity y altmanZ/piotroski cuando hay data.
     const passers = [];
+    let nullDebt = 0;
     for (const [cik, raw] of edgar.facts) {
       const ticker = cikToTicker.get(cik);
-      if (!ticker) continue; // sin ticker mapeado (no cotiza, etc.)
+      if (!ticker) continue;
       const f0 = computeMetrics(ticker, raw);
+      if (f0.debtToEquity == null) nullDebt++;
       if (qualityGate(f0).pass) passers.push({ ticker, cik, raw });
     }
 
-    // 3) precio de los que pasan (Stooq, en batches) → market cap
-    const prices = await fetchPrices(passers.map((p) => p.ticker));
+    // precios + sectores en paralelo
+    const tickerList = passers.map((p) => p.ticker);
+    const [prices, sectorMap] = await Promise.all([
+      fetchPrices(tickerList),
+      enrichSectors(tickerList).catch((e) => {
+        console.warn('[refresh-gems] sector enrichment falló:', e.message);
+        return new Map();
+      }),
+    ]);
 
     const now = Date.now();
     const gems = {};
     let priced = 0;
+    let withSector = 0;
     for (const p of passers) {
       const pr = prices.get(p.ticker);
       const shares = sharesByCik.get(p.cik) ?? null;
       const cap = pr?.price != null && shares != null ? pr.price * shares : null;
       if (cap != null) priced++;
       const f = computeMetrics(p.ticker, p.raw, cap, pr?.price ?? null);
+      const meta = sectorMap.get(p.ticker);
+      if (meta?.sector) withSector++;
       gems[p.ticker] = {
         symbol: p.ticker,
         name: pr?.name ?? null,
-        sector: null, // EDGAR/Stooq no lo dan acá; se enriquece en /deep
+        sector: meta?.sector ?? null,
+        industry: meta?.industry ?? null,
         marketCap: cap,
         price: pr?.price ?? null,
         sharesOutstanding: shares,
@@ -89,9 +99,11 @@ export default async function handler(req, res) {
         secCoverage: edgar.coverage,
         gatePassers: passers.length,
         priced,
+        withSector,
+        nullDebtCount: nullDebt,
         totalTracked: Object.keys(gems).length,
         ms: Date.now() - t0,
-        sources: { fundamentals: 'sec-edgar-xbrl', price: 'stooq' },
+        sources: { fundamentals: 'sec-edgar-xbrl', price: 'stooq', sector: 'finnhub' },
       },
     };
 

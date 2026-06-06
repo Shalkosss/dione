@@ -1,35 +1,37 @@
-// api/screener.js — Endpoint que DIONE consume para /scan-fundamental y /hidden-gems.
+// api/screener.js — Endpoint que DIONE consume para /scan-fundamental, /hidden-gems, /scan-combo.
 //
 // NO calcula nada en vivo: lee el snapshot precomputado y lo filtra/rankea en
-// memoria (<200ms). Por eso nunca da timeout aunque el universo sea grande.
+// memoria (<200ms).
 //
 // Query params (todos opcionales):
-//   mode               "gems" (default) | "fundamental" → fija los defaults de cap.
+//   mode               "gems" (default) | "fundamental" | "technical" | "combo"
 //                        gems        → 300M–2B   (Tier 3, hidden gems)
 //                        fundamental → 500M–200B (universo fundamental, UNIVERSE.md)
-//   capMin, capMax     market cap USD. Override explícito: pisa el default del mode.
-//   minScore           pre-score mínimo (default 60)
-//   sector             filtro GICS (ej "Technology") — hoy no sirve, sector viene null
+//                        technical   → mismo universo gems pero rankeado por technicalScore
+//                        combo       → mismo universo gems rankeado por 0.5*pre + 0.5*tech
+//   capMin, capMax     market cap USD. Override explícito.
+//   minScore           pre-score mínimo (default 60) — solo aplica a mode=gems/fundamental
+//   sector             filtro GICS (ej "Technology") — case-insensitive contains
 //   gateOnly           "1" → solo las que pasan el quality gate (default 1)
-//   sort               "score" (default) | "roe" | "fcfYield" | "cap"
+//   sort               "score" (default) | "roe" | "fcfYield" | "cap" | "technical" | "combo"
 //   limit              default 25, max 100
 //   includeFailed      "1" → incluir las que NO pasan el gate (con motivos)
-//   includeNoCap       "1" → incluir filas con marketCap null (solo debug; por
-//                            default se EXCLUYEN porque no se puede verificar el
-//                            filtro duro de >$300M de UNIVERSE.md)
+//   includeNoCap       "1" → incluir filas con marketCap null
 //
 // Ejemplos:
 //   /hidden-gems       → GET /api/screener?mode=gems&minScore=60&limit=25
 //   /scan-fundamental  → GET /api/screener?mode=fundamental&minScore=60&limit=25
+//   /scan-combo        → GET /api/screener?mode=combo&limit=10
 
 import { readSnapshot } from '../lib/store.js';
 
 export const config = { maxDuration: 10 };
 
-// Defaults de cap por modo. capMin/capMax explícitos en la query los pisan.
 const MODE_DEFAULTS = {
-  gems:        { capMin: 300_000_000, capMax: 2_000_000_000 },
-  fundamental: { capMin: 500_000_000, capMax: 200_000_000_000 },
+  gems:        { capMin: 300_000_000,  capMax: 2_000_000_000   },
+  fundamental: { capMin: 500_000_000,  capMax: 200_000_000_000 },
+  technical:   { capMin: 300_000_000,  capMax: 2_000_000_000   },
+  combo:       { capMin: 300_000_000,  capMax: 2_000_000_000   },
 };
 
 export default async function handler(req, res) {
@@ -40,45 +42,48 @@ export default async function handler(req, res) {
 
     const capMin = num(q.capMin, def.capMin);
     const capMax = num(q.capMax, def.capMax);
-    const minScore = num(q.minScore, 60);
+    const minScore = num(q.minScore, mode === 'technical' || mode === 'combo' ? 0 : 60);
     const limit = Math.min(num(q.limit, 25), 100);
     const sector = (q.sector || '').toString().toLowerCase() || null;
     const gateOnly = q.gateOnly !== '0';
     const includeFailed = q.includeFailed === '1';
     const includeNoCap = q.includeNoCap === '1';
-    const sort = (q.sort || 'score').toString();
+    const sort = (q.sort || defaultSort(mode)).toString();
 
     const snap = await readSnapshot();
     if (!snap || !snap.gems) {
       return res.status(503).json({
-        error: 'snapshot todavía no generado — corré /api/cron/refresh-gems o esperá al primer cron',
+        error: 'snapshot todavía no generado — corré /api/cron/refresh-gems',
       });
     }
 
     let rows = Object.values(snap.gems);
 
-    // filtros
     rows = rows.filter((r) => {
-      // CAP: si marketCap es null NO se puede verificar el filtro duro (>$300M),
-      // así que se EXCLUYE salvo includeNoCap=1. Esto mata el bug por el que
-      // nombres con cap null (ej. BUDA) se colaban en CUALQUIER rango de cap.
       if (r.marketCap == null) {
         if (!includeNoCap) return false;
       } else if (r.marketCap < capMin || r.marketCap > capMax) {
         return false;
       }
-      if (sector && (r.sector || '').toLowerCase() !== sector) return false;
+      if (sector) {
+        const s = (r.sector || '').toLowerCase();
+        if (!s.includes(sector)) return false;
+      }
       if (!includeFailed && gateOnly && !r.gatePass) return false;
-      if (r.gatePass && r.preScore != null && r.preScore < minScore) return false;
+      if (r.gatePass && r.preScore != null && r.preScore < minScore && mode !== 'technical' && mode !== 'combo') return false;
+      // technical/combo: requerir score válido para no servir filas vacías
+      if (mode === 'technical' && (r.technicalScore == null)) return false;
+      if (mode === 'combo' && (r.comboScore == null)) return false;
       return true;
     });
 
-    // orden
     const sorters = {
       score: (a, b) => (b.preScore ?? -1) - (a.preScore ?? -1),
       roe: (a, b) => (b.roe ?? -1) - (a.roe ?? -1),
       fcfYield: (a, b) => (b.fcfYield ?? -1) - (a.fcfYield ?? -1),
       cap: (a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0),
+      technical: (a, b) => (b.technicalScore ?? -1) - (a.technicalScore ?? -1),
+      combo: (a, b) => (b.comboScore ?? -1) - (a.comboScore ?? -1),
     };
     rows.sort(sorters[sort] || sorters.score);
 
@@ -90,14 +95,23 @@ export default async function handler(req, res) {
       marketCap: r.marketCap,
       price: r.price,
       preScore: r.preScore,
+      technicalScore: r.technicalScore ?? null,
+      comboScore: r.comboScore ?? null,
+      wyckoffPhase: r.wyckoffPhase ?? null,
+      wyckoffEvents: r.wyckoffEvents ?? [],
       gatePass: r.gatePass,
       gateReasons: r.gatePass ? undefined : r.gateReasons,
       metrics: {
         roe: r.roe, roic: r.roic, fcfYield: r.fcfYield,
         debtToEquity: r.debtToEquity, currentRatio: r.currentRatio,
         grossMargin: r.grossMargin, netMargin: r.netMargin, pe: r.pe,
-        altmanZ: r.altmanZ ?? null, piotroski: r.piotroski ?? null,
+        altmanZ: r.altmanZ ?? null,
+        piotroski: r.piotroski ?? null,
+        piotroskiPartial: r.piotroskiPartial ?? null,
+        rsi: r.rsi ?? null,
+        cmf: r.cmf ?? null,
       },
+      technicalBreakdown: r.technicalBreakdown ?? null,
     }));
 
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
@@ -113,6 +127,12 @@ export default async function handler(req, res) {
     console.error('[screener]', e);
     return res.status(500).json({ error: e.message });
   }
+}
+
+function defaultSort(mode) {
+  if (mode === 'technical') return 'technical';
+  if (mode === 'combo') return 'combo';
+  return 'score';
 }
 
 const num = (v, d) => {
