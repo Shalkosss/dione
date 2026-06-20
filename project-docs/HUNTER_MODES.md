@@ -1,9 +1,8 @@
 # HUNTER MODES
 
-[CAMBIOS vs versión anterior: REMOVIDO el disclaimer Phase B — el
-scoring técnico SÍ está computado en backend por el cron
-refresh-technical 10:00 UTC. Documentada solo la ventana 09-10 UTC como
-única degradación esperada.]
+[CAMBIOS vs versión anterior: scoring técnico ahora es DOBLE VÍA (v3).
+technicalScore = max(trendTrack, wyckoffTrack) + bonuses. Documentada la
+capa borderline del scan combo (param includeBorderline=true).]
 
 Los 3 modos de búsqueda de oportunidades + Divergence.
 
@@ -40,10 +39,48 @@ core 12-24m, macro incierto donde quality > momentum.
 
 **Pregunta**: "¿Cuáles tickers tienen setup técnico fuerte AHORA?"
 
-**Estado backend**: ✅ LIVE. El cron `refresh-technical` (10:00 UTC)
-procesa el top 150 gate-passers por preScore, baja 400 días de candles
-de Yahoo, computa `technicalScore` (0-100), `wyckoffPhase`, `RSI`, `CMF`
-y los mergea al snapshot.
+**Estado backend**: ✅ LIVE con scoring **doble vía v3**. El cron
+`refresh-technical` (10:00 UTC) procesa el top 150 gate-passers por
+preScore, baja 400 días de candles de Yahoo, computa `technicalScore`
+(0-100), `wyckoffPhase`, `RSI`, `CMF` y los mergea al snapshot.
+
+### Cómo se computa el score (v3 doble vía)
+
+```
+technicalScore = max(trendTrack, wyckoffTrack) + bonuses
+```
+
+El ticker gana por su **mejor vía**, no por la suma. Un ticker en
+acumulación Wyckoff puro con SMA50<SMA200 puede salir alto via Wyckoff.
+Un ticker en uptrend establecido sin estructura Wyckoff clara puede salir
+alto via Trend.
+
+**VÍA A — Trend Track (máx 100)**:
+- Golden Cross (30): edad del cruce SMA50↑SMA200. <30d=30, 30-90d=22, 90-180d=15
+- Distance to 52W high (15): <1%=15, ≤5%=13, ≤15%=10, ≤25%=5
+- Momentum 12-1 (15-18): percentil del batch. Top decile=18, top quintile=15
+- OBV/CMF trend (15): ambos positivos=15, solo CMF>0.05=8
+- RSI contextual (10): 40-65=10, 65-75=8, >75=2, <40 con GC=8
+- Volume on breakouts (15): RVOL día max vol últimos 30d. >1.5=15, 1.2-1.5=8
+
+**VÍA B — Wyckoff Track (máx 100)**:
+- Phase base: C+(Spring+Test)=20, D=18, B=12, A=5, E=8
+- Spring <60d con RVOL<0.85 = +25
+- Test <30d con RVOL<0.7 = +15
+- SOS <30d con RVOL>1.5 = +15 (1.2-1.5 = +8)
+- P&F count target >30% upside = +10 (15-30% = +5)
+- OBV+CMF positivos durante lateralización = +15 (uno solo = +8)
+
+**Bonuses sobre el max**:
+- +5 si ATR14 < 3% del precio (vol baja, stop más eficiente)
+- +5 si ADV > $10M (liquidez para entrar/salir)
+- -10 si A/D bearish divergence sostenida >30d
+
+El field `technicalBreakdown` del response del screener tiene:
+```
+{ trendTrack, wyckoffTrack, composite, bonuses, viaUsed: "trend"|"wyckoff",
+  goldenCrossAge, rsi, cmf, momentum12_1, wyckoffPhase }
+```
 
 **Cap range default**: $300M – $50B.
 
@@ -87,19 +124,40 @@ computado por `refresh-technical` y merguado al snapshot.
 **Output**: Top 5-10 ranked por `comboScore`. Breakdown + SM score +
 catalyst calendar + mini-tesis 1-3-1 + recommendation.
 
-### Sub-categorías (DIONE las asigna razonando sobre el breakdown)
+### Capa borderline (ON por default para DIONE)
+
+DIONE debe llamar `/scan-combo` con `includeBorderline=true`. El response
+viene en dos capas:
+
+**`results` (Capa 1 — Diamond)**: máx 8.
+- `comboScore ≥ 65 AND preScore ≥ 60 AND technicalScore ≥ 60`
+- Candidatos directos a `/deep`.
+
+**`borderline` (Capa 2 — Divergence)**: máx 5, cada uno con campo
+`borderlineReason` que dispara cuál criterio matcheó (en orden):
+
+| Reason | Criterio | Lectura |
+|---|---|---|
+| `fundamental fuerte, técnico deprimido` | `pre≥70 AND tech<55` | Quality en venta. Posible Wait Tier / Spring potencial |
+| `técnico fuerte, fundamental marginal` | `tech≥75 AND pre<55` | Momentum sin fundamentals. Posible Trader Play / blow-off top |
+| `comboScore borderline (50-64)` | `50≤combo≤64` | Cerca del threshold. Revisar antes de descartar |
+
+DIONE debe mostrar ambas capas con el header `⚠️ BORDERLINE — revisar
+con /deep antes de descartar` sobre la capa 2.
+
+### Sub-categorías de Diamond (DIONE las asigna razonando sobre el breakdown)
 
 **Diamond Tier** — pre ≥ 70 Y tech ≥ 70
 - Acción: entrar agresivo, sizing según conviction + Kelly
 - Real: 5-15%. Paper: 10-25%.
 
-**Wait Tier** — pre ≥ 70, tech < 50
-- Buena empresa, mal timing. NO entrar. Watchlist con alerta cuando
-  técnico mejore.
+**Wait Tier** — pre ≥ 70, tech < 50 → ahora aparece en `borderline` como
+"fundamental fuerte, técnico deprimido". DIONE no entra, watchlist con
+alerta cuando técnico mejore.
 
-**Trader Play** — pre < 50, tech ≥ 80
-- Oportunidad técnica corta. Sizing pequeño (max 3%). Stop estricto.
-- Horizonte 1-3m máx.
+**Trader Play** — pre < 50, tech ≥ 80 → ahora aparece en `borderline`
+como "técnico fuerte, fundamental marginal". DIONE sizing pequeño
+(max 3%), stop estricto, horizonte 1-3m máx.
 
 ---
 

@@ -35,7 +35,7 @@ no en aspiraciones.
 |---|---|---|
 | `/scan-fundamental [limit=N]` | ✅ AUTO | `GET /api/screener?mode=fundamental&limit=N` — rankea por preScore |
 | `/scan-technical [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=technical&limit=N` — rankea por technicalScore (precomputado por cron refresh-technical). **Ventana**: 09:00-10:00 UTC los scores se regeneran, durante esa hora el endpoint cae a preScore con `meta.filters.sortFallback` poblado |
-| `/scan-combo [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=combo&limit=N` — rankea por comboScore (0.5·pre + 0.5·tech). Misma ventana 09-10 UTC |
+| `/scan-combo [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=combo&limit=N&includeBorderline=true` — rankea por comboScore (0.5·pre + 0.5·tech v3). **DIONE debe pasar `includeBorderline=true` siempre**. Response trae `results` (Diamond, max 8) + `borderline` (divergencias, max 5, con `borderlineReason`). Misma ventana 09-10 UTC |
 | `/scan-divergence` | 🟡 PARCIAL | DIONE cruza Fund vs Tech scores del snapshot. Funciona dentro de la ventana técnica |
 | `/hidden-gems` | ✅ AUTO | `GET /api/screener?mode=gems` — cap $300M-$2B |
 

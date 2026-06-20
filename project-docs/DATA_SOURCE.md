@@ -18,7 +18,7 @@ DIONE NO usa web search para data de la app. Llama los endpoints directamente.
 |---|---|---|---|
 | `GET /api/quote/[ticker]` | Finnhub | **30s** | precio, OHLC, prevClose, name, finnhubIndustry, marketCap (en **MILLONES USD**), changePct (**FRACCIÓN**: 0.04 = 4%), logo |
 | `GET /api/candles/[ticker]?period1=&period2=&interval=1d` | Yahoo v8 proxy | **1h** | `chart.result[0]` con OHLCV + **adjclose**. `period1`/`period2` se validan como enteros |
-| `GET /api/screener?mode=&capMin=&capMax=&minScore=&sort=&limit=&includeFailed=` | Supabase snapshot | **5min** | gems con preScore + technicalScore + comboScore + Altman + Piotroski + sector + gate. Modos: `fundamental` (500M-200B), `technical` (300M-50B), `combo` (1B-100B), `gems` (300M-2B) |
+| `GET /api/screener?mode=&capMin=&capMax=&minScore=&sort=&limit=&includeFailed=&includeBorderline=` | Supabase snapshot | **5min** | gems con preScore + technicalScore v3 + comboScore + Altman + Piotroski + sector + gate. Modos: `fundamental` (500M-200B), `technical` (300M-50B), `combo` (1B-100B), `gems` (300M-2B). `includeBorderline=true` agrega clave `borderline` con candidatos de divergencia |
 | `GET /api/smart-money?ticker=&minScore=&limit=` | Supabase snapshot smart-money | **10min** | top N por score (insider clusters + analyst drift). Top 100 gate-passers + override `SMART_MONEY_SYMBOLS` |
 | `GET /api/healthz` | Supabase meta | no-store | status del snapshot. 200/200-degraded/503 según frescura |
 | `GET /api/cron/refresh-gems` | EDGAR + Finnhub → Supabase | — | cron 09:00 UTC, `CRON_SECRET` |
@@ -73,27 +73,46 @@ Típicamente ~300 pasan el gate. **No hay tiers Russell**. El size emerge endóg
 
 ## Schema que devuelve `/api/screener`
 
+> Cuando `includeBorderline=true`, el body incluye además una clave
+> `borderline: [...]` con candidatos que NO califican como Diamond pero
+> tienen divergencia fundamental/técnica significativa. Cada entry de
+> `borderline` lleva un campo `borderlineReason`. Ver [HUNTER_MODES](HUNTER_MODES.md).
+
+
+
 ```json
 {
   "meta": {
     "updatedAt", "fiscalYear", "secCoverage", "gatePassers", "priced",
     "withSector", "technicalUpdatedAt", "technicalScored",
-    "filters": { "mode", "capMin", "capMax", "sort", "sortRequested", "sortFallback" }
+    "returned", "returnedBorderline",
+    "filters": { "mode", "capMin", "capMax", "sort", "sortRequested",
+                 "sortFallback", "includeBorderline" }
   },
   "results": [{
-    "symbol", "name", "sector", "industry", "marketCap", "price",
+    "symbol", "name", "sector", "industry", "gicsSector",
+    "marketCap", "price",
     "preScore", "technicalScore", "comboScore",
     "wyckoffPhase", "wyckoffEvents",
     "gatePass", "gateReasons",
     "metrics": {
       "roe", "roic", "fcfYield", "debtToEquity", "currentRatio",
       "grossMargin", "netMargin", "pe",
-      "altmanZ", "altmanModel" ("Z" o "Z\""),
-      "piotroski" (0-9), "piotroskiPartial" (bool),
+      "altmanZ", "altmanModel" ("Z" | "Z\""),
+      "piotroski" (0-9 | null), "piotroskiPartial" (bool),
       "rsi", "cmf"
     },
-    "technicalBreakdown"
-  }]
+    "technicalBreakdown": {
+      "trendTrack", "wyckoffTrack", "composite", "bonuses",
+      "viaUsed" ("trend" | "wyckoff"),
+      "goldenCrossAge" (días | null),
+      "rsi", "cmf", "momentum12_1" (fracción | null),
+      "wyckoffPhase"
+    }
+  }],
+  "borderline": [  // SOLO cuando includeBorderline=true
+    { ...mismo schema que results..., "borderlineReason": string }
+  ]
 }
 ```
 
