@@ -45,6 +45,8 @@ export default async function handler(req, res) {
     const minScore = num(q.minScore, mode === 'technical' || mode === 'combo' ? 0 : 60);
     const limit = Math.max(1, Math.min(num(q.limit, 25), 100));
     const sector = (q.sector || '').toString().toLowerCase() || null;
+    // gicsSector matchea exacto (case-insensitive) contra uno de los 11 GICS L1.
+    const gicsSector = (q.gicsSector || '').toString().toLowerCase() || null;
     const gateOnly = q.gateOnly !== '0';
     const includeFailed = q.includeFailed === '1';
     const includeNoCap = q.includeNoCap === '1';
@@ -68,6 +70,10 @@ export default async function handler(req, res) {
       if (sector) {
         const s = (r.sector || '').toLowerCase();
         if (!s.includes(sector)) return false;
+      }
+      if (gicsSector) {
+        const g = (r.gicsSector || '').toLowerCase();
+        if (g !== gicsSector) return false;
       }
       if (!includeFailed && gateOnly && !r.gatePass) return false;
       if (r.gatePass && r.preScore != null && r.preScore < minScore && mode !== 'technical' && mode !== 'combo') return false;
@@ -104,6 +110,7 @@ export default async function handler(req, res) {
       name: r.name,
       sector: r.sector,
       industry: r.industry,
+      gicsSector: r.gicsSector ?? null,
       marketCap: r.marketCap,
       price: r.price,
       preScore: r.preScore,
@@ -127,6 +134,14 @@ export default async function handler(req, res) {
       technicalBreakdown: r.technicalBreakdown ?? null,
     }));
 
+    // Headers de observabilidad: edad del snapshot fundamental + técnico.
+    const now = Date.now();
+    const fundAgeH = hoursAgo(snap.meta?.updatedAt, now);
+    const techAgeH = hoursAgo(snap.meta?.technicalUpdatedAt, now);
+    if (fundAgeH != null) res.setHeader('X-Snapshot-Age-Hours', String(fundAgeH));
+    if (techAgeH != null) res.setHeader('X-Technical-Age-Hours', String(techAgeH));
+    if (sortFallback) res.setHeader('X-Sort-Fallback', '1');
+
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     return res.status(200).json({
       meta: {
@@ -138,6 +153,7 @@ export default async function handler(req, res) {
           capMax,
           minScore,
           sector,
+          gicsSector,
           sort,
           sortRequested: requestedSort,
           sortFallback,
@@ -161,3 +177,10 @@ const num = (v, d) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
 };
+
+function hoursAgo(iso, now) {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.round(((now - t) / 36e5) * 10) / 10;
+}

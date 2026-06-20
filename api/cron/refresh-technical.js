@@ -40,6 +40,10 @@ export default async function handler(req, res) {
       days: 400, concurrency: 5, throttleMs: 200,
     });
 
+    // Telemetría: cuántos símbolos fallaron en bajar candles. Si supera el
+    // 30% del lote, marcamos meta.technicalDegraded para que el endpoint y
+    // /api/healthz lo reflejen sin romper el snapshot.
+    let candleFailures = 0;
     let withTechnical = 0;
     for (const sym of symbols) {
       const candles = candlesMap.get(sym);
@@ -52,6 +56,7 @@ export default async function handler(req, res) {
         target.wyckoffPhase = null;
         target.wyckoffEvents = [];
         target.comboScore = null;
+        if (!candles) candleFailures++;
         continue;
       }
 
@@ -72,11 +77,16 @@ export default async function handler(req, res) {
       }
     }
 
+    const failureRate = symbols.length > 0 ? candleFailures / symbols.length : 0;
+    const degraded = failureRate > 0.3;
+
     snap.meta = {
       ...snap.meta,
       technicalUpdatedAt: new Date().toISOString(),
       technicalScored: withTechnical,
       technicalAttempted: symbols.length,
+      technicalCandleFailures: candleFailures,
+      technicalDegraded: degraded,
     };
 
     await writeSnapshot(snap);
@@ -84,6 +94,8 @@ export default async function handler(req, res) {
       ok: true,
       scored: symbols.length,
       withTechnical,
+      candleFailures,
+      degraded,
       ms: Date.now() - t0,
     });
   } catch (e) {

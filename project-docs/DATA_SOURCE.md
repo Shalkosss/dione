@@ -19,11 +19,14 @@ DIONE NO usa web search para data de la app. Llama los endpoints directamente.
 | `GET /api/quote/[ticker]` | Finnhub | **30s** | precio, OHLC, prevClose, name, finnhubIndustry, marketCap (en **MILLONES USD**), changePct (**FRACCIÓN**: 0.04 = 4%), logo |
 | `GET /api/candles/[ticker]?period1=&period2=&interval=1d` | Yahoo v8 proxy | **1h** | `chart.result[0]` con OHLCV + **adjclose**. `period1`/`period2` se validan como enteros |
 | `GET /api/screener?mode=&capMin=&capMax=&minScore=&sort=&limit=&includeFailed=` | Supabase snapshot | **5min** | gems con preScore + technicalScore + comboScore + Altman + Piotroski + sector + gate. Modos: `fundamental` (500M-200B), `technical` (300M-50B), `combo` (1B-100B), `gems` (300M-2B) |
-| `GET /api/cron/refresh-gems` | EDGAR + Stooq + Finnhub → Supabase | — | cron 09:00 UTC, `CRON_SECRET` |
+| `GET /api/smart-money?ticker=&minScore=&limit=` | Supabase snapshot smart-money | **10min** | top N por score (insider clusters + analyst drift). Top 100 gate-passers + override `SMART_MONEY_SYMBOLS` |
+| `GET /api/healthz` | Supabase meta | no-store | status del snapshot. 200/200-degraded/503 según frescura |
+| `GET /api/cron/refresh-gems` | EDGAR + Finnhub → Supabase | — | cron 09:00 UTC, `CRON_SECRET` |
 | `GET /api/cron/refresh-technical` | Yahoo candles → Supabase merge | — | cron 10:00 UTC, `CRON_SECRET` |
+| `GET /api/cron/refresh-smart-money` | Finnhub insider+recs → Supabase | — | cron 11:00 UTC, `CRON_SECRET` |
 
 ### NO EXISTEN (documentados en versiones viejas, no llamar):
-`/api/portfolio`, `/api/smart-money`, `/api/log-thesis`, `/api/get-performance`, `/api/forward-portfolio`, `/api/risk`, `/api/screener?mode=short`.
+`/api/portfolio`, `/api/log-thesis`, `/api/get-performance`, `/api/forward-portfolio`, `/api/risk`, `/api/screener?mode=short`.
 
 ---
 

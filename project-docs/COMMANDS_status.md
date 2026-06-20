@@ -47,8 +47,8 @@ no en aspiraciones.
 
 | Comando | Estado | Nota |
 |---|---|---|
-| `/smart-money TICKER` | ✅ AUTO/parcial | insider transactions + recommendation drift vía Finnhub (`/stock/insider-transactions`, `/stock/recommendation`). 13F y dark pool requieren paste Bloomberg |
-| `/smart-money` (overview) | 🔴 NO EXISTE | requiere cron dedicado que agregue señales por ticker. Mientras tanto: pasar la watchlist a `/smart-money TICKER` ticker por ticker |
+| `/smart-money TICKER` | ✅ AUTO | `GET /api/smart-money?ticker=TICKER` — devuelve insider + analyst drift del snapshot precomputado. 404 si está fuera del top N (config `SMART_MONEY_SYMBOLS`). 13F y dark pool: paste Bloomberg |
+| `/smart-money` (overview) | ✅ AUTO | `GET /api/smart-money?limit=10` — top N por score. Cron `refresh-smart-money` 11:00 UTC sobre top 100 gate-passers |
 
 ---
 
@@ -116,15 +116,27 @@ Cero JSON que pegar. Los tres scans (fundamental/technical/combo) funcionan igua
 
 ---
 
-## VENTANA DIARIA 09:00-10:00 UTC
+## HEALTHCHECK
+
+`GET /api/healthz` devuelve el estado del snapshot.
+- `200` con `degraded:false` → fundamental + técnico frescos
+- `200` con `degraded:true` → fundamental fresco, técnico viejo o ausente
+- `503` → fundamental viejo (>26h) o ausente
+
+Útil para monitor externo (UptimeRobot, BetterStack) cada 15-60 min.
+
+---
+
+## VENTANA DIARIA 09:00-11:00 UTC
 
 Es la única degradación conocida del Hunter:
 
 1. **09:00 UTC** — `refresh-gems` regenera el snapshot fundamental DESDE CERO sobre los ~6,000 filers EDGAR. En ese proceso, `technicalScore`/`comboScore` quedan en null (se sobrescriben).
 2. **10:00 UTC** — `refresh-technical` corre sobre el top 150 gate-passers por preScore, baja 400 días de candles de Yahoo, computa technicalScore + Wyckoff phase + comboScore.
-3. **Durante esa ventana**: `mode=technical` y `mode=combo` caen a preScore. El endpoint expone esto en `meta.filters.sortFallback`.
+3. **11:00 UTC** — `refresh-smart-money` computa insider + analyst drift sobre el top 100 por comboScore.
+4. **Durante esa ventana**: `mode=technical` y `mode=combo` caen a preScore. El endpoint expone esto en `meta.filters.sortFallback` y en el header `X-Sort-Fallback`.
 
-Si querés evitar la ventana, scaneá fuera de 09-10 UTC (04-05 AM Lima).
+Si querés evitar la ventana, scaneá fuera de 09-11 UTC (04-06 AM Lima).
 
 ---
 
