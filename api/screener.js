@@ -30,8 +30,8 @@ export const config = { maxDuration: 10 };
 const MODE_DEFAULTS = {
   gems:        { capMin: 300_000_000,  capMax: 2_000_000_000   },
   fundamental: { capMin: 500_000_000,  capMax: 200_000_000_000 },
-  technical:   { capMin: 300_000_000,  capMax: 2_000_000_000   },
-  combo:       { capMin: 300_000_000,  capMax: 2_000_000_000   },
+  technical:   { capMin: 300_000_000,  capMax: 50_000_000_000  },
+  combo:       { capMin: 1_000_000_000, capMax: 100_000_000_000 },
 };
 
 export default async function handler(req, res) {
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     const gateOnly = q.gateOnly !== '0';
     const includeFailed = q.includeFailed === '1';
     const includeNoCap = q.includeNoCap === '1';
-    const sort = (q.sort || defaultSort(mode)).toString();
+    const requestedSort = (q.sort || defaultSort(mode)).toString();
 
     const snap = await readSnapshot();
     if (!snap || !snap.gems) {
@@ -71,11 +71,23 @@ export default async function handler(req, res) {
       }
       if (!includeFailed && gateOnly && !r.gatePass) return false;
       if (r.gatePass && r.preScore != null && r.preScore < minScore && mode !== 'technical' && mode !== 'combo') return false;
-      // technical/combo: requerir score válido para no servir filas vacías
-      if (mode === 'technical' && (r.technicalScore == null)) return false;
-      if (mode === 'combo' && (r.comboScore == null)) return false;
       return true;
     });
+
+    // Fallback de sort: si el snapshot no tiene los scores precomputados
+    // (Phase B pendiente), technical/combo caen a preScore. Se documenta en meta.
+    const hasTechScore = rows.some((r) => r.technicalScore != null);
+    const hasComboScore = rows.some((r) => r.comboScore != null);
+    let sort = requestedSort;
+    let sortFallback = null;
+    if (sort === 'technical' && !hasTechScore) {
+      sort = 'score';
+      sortFallback = 'preScore (technicalScore no precomputado en snapshot — Phase B pendiente)';
+    }
+    if (sort === 'combo' && !hasComboScore) {
+      sort = 'score';
+      sortFallback = 'preScore (comboScore no precomputado en snapshot — Phase B pendiente)';
+    }
 
     const sorters = {
       score: (a, b) => (b.preScore ?? -1) - (a.preScore ?? -1),
@@ -120,7 +132,16 @@ export default async function handler(req, res) {
       meta: {
         ...snap.meta,
         returned: out.length,
-        filters: { mode, capMin, capMax, minScore, sector, sort },
+        filters: {
+          mode,
+          capMin,
+          capMax,
+          minScore,
+          sector,
+          sort,
+          sortRequested: requestedSort,
+          sortFallback,
+        },
       },
       results: out,
     });
