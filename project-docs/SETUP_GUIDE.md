@@ -1,27 +1,32 @@
 # SETUP GUIDE
 
-[CAMBIOS vs versión anterior: borrada la Fase 2 con endpoints fantasma
-(/api/portfolio, /api/smart-money, /api/log-thesis, /api/get-performance,
-/api/forward-portfolio — no existen). La app ya está live en
-https://dionee.vercel.app sin pasos pendientes de despliegue. Los
-pendientes son operativos. INSTRUCTIONS.md eliminado del inventario (es
-el system prompt del Project, no un .md). Inventario actualizado a 19
-archivos reales — ver INDEX.md.]
+[CAMBIOS vs versión anterior: Phase B del scoring técnico marcado como
+LIVE (no pendiente). Sector tagging marcado como LIVE (Finnhub +
+fallback SEC). Solo quedan pendientes: poblar THESIS_LOG, /smart-money
+overview cron, monitoreo de fallos del cron. Inventario expandido para
+incluir DATA_SOURCE.md.]
 
 ---
 
 ## ESTADO ACTUAL
 
 App live: **https://dionee.vercel.app**
-Endpoints reales en producción:
+Endpoints en producción ([DATA_SOURCE.md](DATA_SOURCE.md) para schema completo):
 - `GET /api/quote/[ticker]` — Finnhub, cache 30s
 - `GET /api/candles/[ticker]?period1=&period2=&interval=1d` — Yahoo proxy, cache 1h
-- `GET /api/screener?capMin=&capMax=&minScore=&sort=&limit=&includeFailed=&mode=` — Supabase snapshot, cache 5min
-- `GET /api/cron/refresh-gems` — cron diario (CRON_SECRET)
+- `GET /api/screener?mode=&capMin=&capMax=&...` — Supabase snapshot, cache 5min
+- `GET /api/cron/refresh-gems` — cron diario 09:00 UTC (CRON_SECRET)
+- `GET /api/cron/refresh-technical` — cron diario 10:00 UTC (CRON_SECRET)
 
-Pages live: Optimizer, Risk, Hidden Gems table, Thesis.
+Pages live: Optimizer, Risk, Hidden Gems table, Screener (browser-side
+parallel), Thesis (local, paste manual).
 
-**No hay pasos pendientes de despliegue.** Los pendientes son operativos.
+Backends del Hunter:
+- Fundamental: ✅ LIVE (preScore + Altman + Piotroski + sector)
+- Técnico (Phase B): ✅ LIVE (technicalScore + Wyckoff + comboScore para top 150)
+
+**No hay pasos pendientes de despliegue.** Los pendientes son operativos
+y de monitoreo.
 
 ---
 
@@ -33,19 +38,21 @@ Pages live: Optimizer, Risk, Hidden Gems table, Thesis.
 3. Descripción: `Senior PM nivel JPM AM. Equity research multi-lente, smart money tracking, portafolio óptimo.`
 
 ### 1.2 Pegar custom instructions
-El system prompt del DIONE (lo que antes se llamaba "INSTRUCTIONS.md")
+El system prompt de DIONE (lo que antes se llamaba "INSTRUCTIONS.md")
 va en el campo **Custom instructions** del Project. NO es un archivo
 del knowledge base.
 
 ### 1.3 Subir Project Knowledge
-Los 19 archivos del [INDEX](INDEX.md). Esperar a que se procesen.
+Los 20 archivos del [INDEX](INDEX.md). Esperar a que se procesen.
 
 ### 1.4 Test
 ```
 /help
 /quick MELI
+/scan-combo limit=5
 ```
-Si responde con la lista de comandos y un análisis estructurado, OK.
+Si responde con la lista de comandos, un análisis estructurado, y un
+top 5 con `meta.filters.mode="combo"`, OK.
 
 ---
 
@@ -53,28 +60,38 @@ Si responde con la lista de comandos y un análisis estructurado, OK.
 
 ### A. Poblar THESIS_LOG
 Hoy está vacío. Cada `/deep` con conviction ≥ 3 debe gatillar
-`/log-thesis TICKER`. Mínimo n=10 antes de que `/performance` tenga señal.
+`/log-thesis TICKER`. Mínimo n=10 antes de que `/performance` tenga
+señal estadística.
 
-### B. Activar Phase B del scoring técnico
-Hoy el cron solo computa preScore fundamental. `mode=technical` y
-`mode=combo` rutean pero el scoring técnico no está precomputado en
-Supabase — DIONE lo hace on-the-fly desde candles cuando ejecutás
-`/scan-technical` o `/scan-combo`. Ver [COMMANDS_status](COMMANDS_status.md).
+### B. `/smart-money` overview (cron dedicado)
+Hoy `/smart-money TICKER` funciona (insider + recs vía Finnhub). El
+overview sin ticker (top semanal) requiere cron que agregue señales por
+ticker en Supabase. Equivalente a `refresh-gems` pero para 13F + Form 4.
+**No implementado.**
 
-### C. Tagging de sector
-Hoy `sector` viene null en el snapshot (EDGAR/Stooq no lo dan). El
-filtro `sector=` del screener no opera. Pendiente: enrichment vía
-Finnhub `/stock/profile2` en el cron.
+### C. Monitoreo de fallos de cron
+Hoy `console.error` en serverless ≠ alerta. Si `refresh-technical`
+falla un día (Yahoo bloquea, EDGAR rate-limit), nadie se entera salvo
+inspeccionar Vercel logs. Roadmap:
+- Healthcheck endpoint que devuelva 503 si `meta.technicalUpdatedAt > 26h`
+- Alerta opcional vía webhook (Discord/Telegram) cuando se cae
 
-### D. /smart-money overview semanal
-Hoy `/smart-money TICKER` funciona parcial (insider + recs Finnhub).
-El overview (`/smart-money` sin ticker) requiere cron dedicado — Fase 3.
+### D. Yahoo fallback para Phase B
+Si Yahoo bloquea IPs Vercel, `refresh-technical` muere. Stooq diario
+tiene OHLC histórico — puede ser fallback con menos resolución intraday
+pero suficiente para Wyckoff diario.
+
+### E. Sector mapping a GICS L1
+Finnhub devuelve `finnhubIndustry` + a veces `gicsSector`; SEC fallback
+da `sicDescription`. El campo `sector` del snapshot es heterogéneo.
+Mapeo a GICS L1 estándar (11 categorías) permitiría filtro/heatmap
+consistente. **No bloqueante.**
 
 ---
 
 ## FASE 3 — Workflow diario perpetuo
 
-### Mañana (15 min)
+### Mañana (15 min) — fuera de la ventana 09-10 UTC (Lima: 04-05 AM)
 - Chat nuevo en Project
 - `/macro` — régimen
 - `/scan-combo` — top oportunidades
@@ -101,12 +118,17 @@ El overview (`/smart-money` sin ticker) requiere cron dedicado — Fase 3.
 ### DIONE inventa precios
 - Está usando training data. Forzá: "llamá `/api/quote/TICKER` antes de responder"
 
-### Respuestas cortas / no consulta archivos
-- Pedirlo explícito: "Consultando [WYCKOFF_FRAMEWORK.md](WYCKOFF_FRAMEWORK.md), analizá NOW"
+### `/scan-combo` devuelve todos los `technicalScore` en null
+- Probablemente estás en la ventana 09:00-10:00 UTC. Esperá 15 min y reintentá.
+- Si fuera de esa ventana: `meta.technicalUpdatedAt` >26h → `refresh-technical` cayó. Reintento manual con CRON_SECRET.
+
+### Sector siempre null
+- Solo pasa si `enrichSectors` cayó dos veces consecutivas (Finnhub + SEC submissions). Ver `meta.withSector / meta.gatePassers`.
+- Si <50%, hay problema upstream. Si ~80-90%, es la cobertura normal.
 
 ### Memoria entre sesiones
-- No persiste. Al inicio de cada sesión pegá el último THESIS_LOG.md
-  si trabajás sobre tesis abiertas.
+- No persiste. Al inicio de cada sesión pegá el último THESIS_LOG.md si
+  trabajás sobre tesis abiertas.
 
 ### Key Finnhub que termina en `nag`
 - Es corrupción de un copy/paste viejo. La key real termina en `q420`.
@@ -120,12 +142,12 @@ El overview (`/smart-money` sin ticker) requiere cron dedicado — Fase 3.
 |---|---|
 | Semanal | WATCHLIST, THESIS_LOG |
 | Mensual | MANDATE (si cambió capital/horizonte), ajustes sugeridos por `/performance` |
-| Trimestral | Frameworks no usados, capacidades faltantes |
+| Trimestral | Frameworks no usados, capacidades faltantes, revisar limitaciones del snapshot |
 | Anual | Setup completo, backtest formal por modo |
 
 ---
 
 ## INVENTARIO
 
-Ver [INDEX.md](INDEX.md). Son 19 archivos. Si encontrás un nombre fuera
+Ver [INDEX.md](INDEX.md). Son 20 archivos. Si encontrás un nombre fuera
 de ese índice, está deprecated.

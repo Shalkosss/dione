@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     const capMin = num(q.capMin, def.capMin);
     const capMax = num(q.capMax, def.capMax);
     const minScore = num(q.minScore, mode === 'technical' || mode === 'combo' ? 0 : 60);
-    const limit = Math.min(num(q.limit, 25), 100);
+    const limit = Math.max(1, Math.min(num(q.limit, 25), 100));
     const sector = (q.sector || '').toString().toLowerCase() || null;
     const gateOnly = q.gateOnly !== '0';
     const includeFailed = q.includeFailed === '1';

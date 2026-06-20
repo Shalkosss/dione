@@ -1,11 +1,9 @@
 # HUNTER MODES
 
-[CAMBIOS vs versión anterior: agregado disclaimer al modo Técnico-Wyckoff
-y al modo Combinado aclarando que el scoring técnico NO está computado
-en backend (Phase B pendiente). DIONE lo computa on-the-fly desde
-candles cuando ejecutás `/scan-technical` o `/scan-combo`. Resto del
-framework (filtros, sub-categorías, modo Divergence, adaptación por
-régimen) intacto.]
+[CAMBIOS vs versión anterior: REMOVIDO el disclaimer Phase B — el
+scoring técnico SÍ está computado en backend por el cron
+refresh-technical 10:00 UTC. Documentada solo la ventana 09-10 UTC como
+única degradación esperada.]
 
 Los 3 modos de búsqueda de oportunidades + Divergence.
 
@@ -16,14 +14,16 @@ Los 3 modos de búsqueda de oportunidades + Divergence.
 **Pregunta**: "¿Cuáles son las mejores empresas del universo según
 consenso de frameworks fundamentales?"
 
-**Estado backend**: ✅ FUNCIONA. El cron precomputa el preScore
-fundamental en Supabase. `/api/screener?mode=fundamental` devuelve la
-shortlist real.
+**Estado backend**: ✅ LIVE. El cron `refresh-gems` (09:00 UTC)
+precomputa preScore + Altman Z/Z" + Piotroski + sector en Supabase.
+`/api/screener?mode=fundamental` rankea por preScore.
+
+**Cap range default**: $500M – $200B (overridable con `capMin`/`capMax`).
 
 **Filtros mínimos**:
-- Composite Fundamental Score ≥ 70/100
-- Beneish M-Score < -1.78
-- Altman Z-Score > 2.0
+- Composite Fundamental Score ≥ 70/100 (preScore como proxy hoy)
+- Beneish M-Score < -1.78 (no en snapshot — DIONE lo verifica on-the-fly si aplica)
+- Altman Z-Score > 2.0 (campo `altmanZ` en results, modelo Z o Z")
 - Sector-relevant frameworks aplicados
 
 **Output**: Top 10 ranked. Por cada uno: breakdown + 1-frase tesis +
@@ -38,25 +38,23 @@ core 12-24m, macro incierto donde quality > momentum.
 
 ## MODO 2 — TÉCNICO-WYCKOFF
 
-**Pregunta**: "¿Cuáles tickers tienen setup técnico fuerte AHORA, sin
-filtro fundamental estricto?"
+**Pregunta**: "¿Cuáles tickers tienen setup técnico fuerte AHORA?"
 
-> ⚠️ **DISCLAIMER PHASE B**: el scoring técnico **NO está activo en el
-> backend**. El cron de hoy solo computa preScore fundamental.
-> `/api/screener?mode=technical` rutea pero hoy devuelve la shortlist
-> ordenada por preScore (o vacío si no hay matches). **DIONE computa
-> el technical score on-the-fly** desde `/api/candles/[ticker]` para
-> los candidatos relevantes cuando ejecutás `/scan-technical`. Phase B
-> precomputará este scoring en Supabase.
+**Estado backend**: ✅ LIVE. El cron `refresh-technical` (10:00 UTC)
+procesa el top 150 gate-passers por preScore, baja 400 días de candles
+de Yahoo, computa `technicalScore` (0-100), `wyckoffPhase`, `RSI`, `CMF`
+y los mergea al snapshot.
+
+**Cap range default**: $300M – $50B.
 
 **Filtros mínimos**:
-- Composite Technical Score ≥ 70/100 (computado on-the-fly)
-- Wyckoff phase identificada (no chop sin estructura)
-- Volume signature positiva (OBV o A/D Line up)
-- Anti-chatarra: Altman Z > 2.0, Beneish M < -1.78
+- Composite Technical Score ≥ 70/100 (`technicalScore` del snapshot)
+- Wyckoff phase identificada (campo `wyckoffPhase`, no null)
+- Volume signature positiva (campo `cmf` > 0 o A/D Line trending)
+- Anti-chatarra heredado del gate fundamental
 
-**Output**: Top 10. Por cada uno: technical breakdown + Wyckoff phase y
-eventos + trade plan completo + 1-frase setup + catalyst.
+**Output**: Top 10. Breakdown + Wyckoff phase y eventos + trade plan +
+1-frase setup + catalyst.
 
 **Priorización Wyckoff**:
 1. **Fase C confirmada** (Spring + test) — max R:R
@@ -64,8 +62,10 @@ eventos + trade plan completo + 1-frase setup + catalyst.
 3. **Fase D** (SOS/LPS con volumen)
 4. **Fase E con re-acumulación** (solo si hay consolidación en uptrend)
 
-**Limitación**: buen setup técnico en empresa mediocre = profits cortos,
-no compounding largo.
+**Limitación**:
+- Phase B procesa **top 150 por preScore**. Si tu interés está fuera, no
+  tiene technicalScore. Usar `/wyckoff TICKER` o `/deep TICKER`.
+- Buen setup técnico en empresa mediocre = profits cortos, no compounding.
 
 ---
 
@@ -74,31 +74,30 @@ no compounding largo.
 **Pregunta**: "¿Cuáles tickers tienen fundamentales sólidos Y setup
 técnico ahora?"
 
-> ⚠️ **DISCLAIMER PHASE B**: igual que modo Técnico. El backend hoy
-> rankea por preScore fundamental; el técnico se computa on-the-fly
-> sobre la shortlist cuando ejecutás `/scan-combo`. Cuando Phase B
-> ranquee técnico en Supabase, este modo va a ser substancialmente más
-> rápido y completo.
+**Estado backend**: ✅ LIVE. `comboScore = round(0.5·preScore + 0.5·technicalScore)`,
+computado por `refresh-technical` y merguado al snapshot.
+
+**Cap range default**: $1B – $100B.
 
 **Filtros**:
-- Composite Fundamental ≥ 70
-- Composite Technical ≥ 70
-- Todos los anti-fraud / anti-bankruptcy
+- preScore ≥ 70
+- technicalScore ≥ 70
+- gate fundamental aplicado
 
-**Output**: Top 5-10 ranked por composite total (50/50). Breakdown +
-SM score + catalyst calendar + mini-tesis 1-3-1 + recommendation.
+**Output**: Top 5-10 ranked por `comboScore`. Breakdown + SM score +
+catalyst calendar + mini-tesis 1-3-1 + recommendation.
 
-### Sub-categorías
+### Sub-categorías (DIONE las asigna razonando sobre el breakdown)
 
-**Diamond Tier** — Fund ≥ 70 Y Tech ≥ 70
+**Diamond Tier** — pre ≥ 70 Y tech ≥ 70
 - Acción: entrar agresivo, sizing según conviction + Kelly
 - Real: 5-15%. Paper: 10-25%.
 
-**Wait Tier** — Fund ≥ 70, Tech < 50
+**Wait Tier** — pre ≥ 70, tech < 50
 - Buena empresa, mal timing. NO entrar. Watchlist con alerta cuando
   técnico mejore.
 
-**Trader Play** — Fund < 50, Tech ≥ 80
+**Trader Play** — pre < 50, tech ≥ 80
 - Oportunidad técnica corta. Sizing pequeño (max 3%). Stop estricto.
 - Horizonte 1-3m máx.
 
@@ -109,16 +108,30 @@ SM score + catalyst calendar + mini-tesis 1-3-1 + recommendation.
 **Pregunta**: "¿Dónde hay mispricing porque los lentes están en
 desacuerdo?"
 
-**Filtro**:
-- |Fund - Tech| > 30 puntos, cualquier dirección
-- O: SM ≥ 80 pero ambos otros < 50
+**Filtro** (DIONE cruza scores del snapshot):
+- |preScore - technicalScore| > 30 puntos, cualquier dirección
+- O: SM ≥ 80 (computado on-the-fly) pero pre/tech < 50
 
 **Sub-tipos**:
 1. **High fund, low tech**: quality en venta. Spring potencial.
-2. **Low fund, high tech**: momentum sin fundamentals — burbuja o
-   cambio narrativa.
+2. **Low fund, high tech**: momentum sin fundamentals — burbuja o cambio narrativa.
 3. **High tech, low SM**: retail rally. Blow-off top probable.
 4. **Low tech, high SM**: smart money posicionándose antes del breakout.
+
+---
+
+## VENTANA DE DEGRADACIÓN
+
+**Única ventana conocida**: 09:00-10:00 UTC diario.
+
+Durante esa hora:
+- `refresh-gems` está regenerando el snapshot desde cero
+- `technicalScore`/`comboScore` están en null hasta que `refresh-technical` corra a las 10:00
+- El endpoint cae a sort por `preScore` y expone `meta.filters.sortFallback`
+
+Fuera de esa ventana (otras 23h del día), los 3 modos operan a capacidad
+completa. En Lima (UTC-5) la ventana es 04:00-05:00 AM — improbable que
+te afecte.
 
 ---
 
