@@ -15,6 +15,7 @@ import { fetchPrices } from '../../lib/prices.js';
 import { enrichSectors } from '../../lib/finnhub.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
 import { writeSnapshot } from '../../lib/store.js';
+import { toGicsL1 } from '../../lib/gics.js';
 
 export const config = { maxDuration: 300 };
 
@@ -68,6 +69,7 @@ export default async function handler(req, res) {
     const gems = {};
     let priced = 0;
     let withSector = 0;
+    let withGics = 0;
     for (const p of passers) {
       const pr = prices.get(p.ticker);
       const shares = sharesByCik.get(p.cik) ?? null;
@@ -76,11 +78,17 @@ export default async function handler(req, res) {
       const f = computeMetrics(p.ticker, p.raw, cap, pr?.price ?? null);
       const meta = sectorMap.get(p.ticker);
       if (meta?.sector) withSector++;
+      // gicsSector: mapeo del raw heterogéneo a uno de los 11 GICS L1.
+      // Probamos primero sector (Finnhub gicsSector si vino, sino finnhubIndustry),
+      // y si no mapea, intentamos industry (a veces SIC mapea mejor).
+      const gicsSector = toGicsL1(meta?.sector) || toGicsL1(meta?.industry) || null;
+      if (gicsSector) withGics++;
       gems[p.ticker] = {
         symbol: p.ticker,
         name: pr?.name ?? meta?.name ?? null,
         sector: meta?.sector ?? null,
         industry: meta?.industry ?? null,
+        gicsSector,
         marketCap: cap,
         price: pr?.price ?? null,
         sharesOutstanding: shares,
@@ -101,6 +109,7 @@ export default async function handler(req, res) {
         gatePassers: passers.length,
         priced,
         withSector,
+        withGics,
         nullDebtCount: nullDebt,
         totalTracked: Object.keys(gems).length,
         ms: Date.now() - t0,

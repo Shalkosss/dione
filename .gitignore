@@ -9,3 +9,20 @@ dist-ssr
 .vercel
 finhub.env
 supabase.env
+
+# Project docs — KEYS.md tiene secretos, no commitear
+project-docs/KEYS.md
+
+# Cowork — sólo trackeamos estructura (.gitkeep) y scripts
+tools/cowork/data/*
+!tools/cowork/data/.gitkeep
+!tools/cowork/data/deep_inbox/
+tools/cowork/data/deep_inbox/*
+!tools/cowork/data/deep_inbox/.gitkeep
+!tools/cowork/data/deep_inbox/processed/
+tools/cowork/data/deep_inbox/processed/*
+!tools/cowork/data/deep_inbox/processed/.gitkeep
+tools/cowork/alerts/*
+!tools/cowork/alerts/.gitkeep
+tools/cowork/logs/*
+!tools/cowork/logs/.gitkeep

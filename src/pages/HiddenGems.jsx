@@ -186,6 +186,27 @@ export default function HiddenGems() {
         </div>
       </div>
 
+      {/* Banner sortFallback: el scoring técnico está null en esta corrida
+          (ventana 09-10 UTC o cron técnico cayó). El ranking cae a preScore. */}
+      {meta?.filters?.sortFallback && (
+        <div style={{ ...panel, borderColor: C.accent, marginBottom: 16, padding: "10px 16px", fontSize: 11, color: C.accent }}>
+          Ranking degradado: {meta.filters.sortFallback}
+          <div style={{ color: C.muted, marginTop: 4 }}>
+            Probable ventana 09:00-10:00 UTC (técnico regenerándose) o fallo del cron. Verificá <code>/api/healthz</code>.
+          </div>
+        </div>
+      )}
+
+      {/* Banner degraded: el cron técnico marcó >30% de candles fallidos. */}
+      {meta?.technicalDegraded && (
+        <div style={{ ...panel, borderColor: C.neg, marginBottom: 16, padding: "10px 16px", fontSize: 11, color: C.neg }}>
+          Phase B degradada: {meta.technicalCandleFailures ?? "?"} de {meta.technicalAttempted ?? "?"} símbolos sin candles
+          <div style={{ color: C.muted, marginTop: 4 }}>
+            Yahoo probablemente está bloqueando. Reintentá el cron o esperá al ciclo de mañana.
+          </div>
+        </div>
+      )}
+
       {error && (
         <div style={{ ...panel, borderColor: C.neg, marginBottom: 16, padding: "10px 16px", fontSize: 11, color: C.neg }}>
           Error: {error}

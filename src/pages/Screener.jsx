@@ -150,6 +150,16 @@ export default function Screener() {
 
   return (
     <div>
+      {/* Aviso: este screener es el "modo offline" — universo curado local,
+          scan browser-side via Yahoo. Para el Hunter completo (gate EDGAR +
+          Phase B Wyckoff + Altman + Piotroski + GICS) usar /hidden-gems. */}
+      <div style={{ ...panel, marginBottom: 12, padding: "8px 14px", fontSize: 10, color: C.muted, borderColor: C.border }}>
+        Modo offline · universo curado local ({UNIVERSE.length} tickers) ·
+        cálculo browser-side · cache localStorage 24h. Para el Hunter
+        completo del backend (snapshot EDGAR + Wyckoff + composite scoring)
+        ver <b style={{ color: C.accent }}>Hidden Gems</b>.
+      </div>
+
       {/* CONTROLES */}
       <div style={{ ...panel, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>

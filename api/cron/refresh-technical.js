@@ -40,6 +40,24 @@ export default async function handler(req, res) {
       days: 400, concurrency: 5, throttleMs: 200,
     });
 
+    // PRE-PASS — calcular el universo de retornos 12-1 para el ranking percentil
+    // que usa la VÍA A del scoring v3. Cheap: una división por símbolo.
+    const universeReturns12_1 = [];
+    for (const sym of symbols) {
+      const candles = candlesMap.get(sym);
+      if (!candles || candles.length < 253) continue;
+      const c21 = candles[candles.length - 22]?.c;
+      const c252 = candles[candles.length - 253]?.c;
+      if (c21 != null && c252 != null && c252 > 0) {
+        universeReturns12_1.push((c21 - c252) / c252);
+      }
+    }
+
+    // PASS PRINCIPAL — computeTechnicalScore v3 sobre cada símbolo.
+    // Telemetría: cuántos símbolos fallaron en bajar candles. Si supera el
+    // 30% del lote, marcamos meta.technicalDegraded para que el endpoint y
+    // /api/healthz lo reflejen sin romper el snapshot.
+    let candleFailures = 0;
     let withTechnical = 0;
     for (const sym of symbols) {
       const candles = candlesMap.get(sym);
@@ -52,10 +70,11 @@ export default async function handler(req, res) {
         target.wyckoffPhase = null;
         target.wyckoffEvents = [];
         target.comboScore = null;
+        if (!candles) candleFailures++;
         continue;
       }
 
-      const tech = computeTechnicalScore(candles);
+      const tech = computeTechnicalScore(candles, { universeReturns12_1 });
       target.technicalScore = tech.score;
       target.technicalBreakdown = tech.breakdown;
       target.wyckoffPhase = tech.phase;
@@ -72,11 +91,16 @@ export default async function handler(req, res) {
       }
     }
 
+    const failureRate = symbols.length > 0 ? candleFailures / symbols.length : 0;
+    const degraded = failureRate > 0.3;
+
     snap.meta = {
       ...snap.meta,
       technicalUpdatedAt: new Date().toISOString(),
       technicalScored: withTechnical,
       technicalAttempted: symbols.length,
+      technicalCandleFailures: candleFailures,
+      technicalDegraded: degraded,
     };
 
     await writeSnapshot(snap);
@@ -84,6 +108,8 @@ export default async function handler(req, res) {
       ok: true,
       scored: symbols.length,
       withTechnical,
+      candleFailures,
+      degraded,
       ms: Date.now() - t0,
     });
   } catch (e) {
