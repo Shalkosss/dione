@@ -17,11 +17,18 @@
 //   limit              default 25, max 100
 //   includeFailed      "1" → incluir las que NO pasan el gate (con motivos)
 //   includeNoCap       "1" → incluir filas con marketCap null
+//   includeBorderline  "true" → agregar clave `borderline` con candidatos de
+//                                divergencia (combo 50-64, o fund/tech muy
+//                                asimétricos). Default false para no romper
+//                                la UI existente. Cuando es true, results se
+//                                limita a Diamond (combo≥65, pre≥60, tech≥60,
+//                                max 8) y borderline a max 5.
 //
 // Ejemplos:
 //   /hidden-gems       → GET /api/screener?mode=gems&minScore=60&limit=25
 //   /scan-fundamental  → GET /api/screener?mode=fundamental&minScore=60&limit=25
 //   /scan-combo        → GET /api/screener?mode=combo&limit=10
+//   /scan-combo +bord  → GET /api/screener?mode=combo&includeBorderline=true
 
 import { readSnapshot } from '../lib/store.js';
 
@@ -50,6 +57,8 @@ export default async function handler(req, res) {
     const gateOnly = q.gateOnly !== '0';
     const includeFailed = q.includeFailed === '1';
     const includeNoCap = q.includeNoCap === '1';
+    // Acepta "true" o "1" (los clientes humanos tipean true, los crons mandan 1).
+    const includeBorderline = q.includeBorderline === 'true' || q.includeBorderline === '1';
     const requestedSort = (q.sort || defaultSort(mode)).toString();
 
     const snap = await readSnapshot();
@@ -105,34 +114,88 @@ export default async function handler(req, res) {
     };
     rows.sort(sorters[sort] || sorters.score);
 
-    const out = rows.slice(0, limit).map((r) => ({
-      symbol: r.symbol,
-      name: r.name,
-      sector: r.sector,
-      industry: r.industry,
-      gicsSector: r.gicsSector ?? null,
-      marketCap: r.marketCap,
-      price: r.price,
-      preScore: r.preScore,
-      technicalScore: r.technicalScore ?? null,
-      comboScore: r.comboScore ?? null,
-      wyckoffPhase: r.wyckoffPhase ?? null,
-      wyckoffEvents: r.wyckoffEvents ?? [],
-      gatePass: r.gatePass,
-      gateReasons: r.gatePass ? undefined : r.gateReasons,
-      metrics: {
-        roe: r.roe, roic: r.roic, fcfYield: r.fcfYield,
-        debtToEquity: r.debtToEquity, currentRatio: r.currentRatio,
-        grossMargin: r.grossMargin, netMargin: r.netMargin, pe: r.pe,
-        altmanZ: r.altmanZ ?? null,
-        altmanModel: r.altmanModel ?? null,
-        piotroski: r.piotroski ?? null,
-        piotroskiPartial: r.piotroskiPartial ?? null,
-        rsi: r.rsi ?? null,
-        cmf: r.cmf ?? null,
-      },
-      technicalBreakdown: r.technicalBreakdown ?? null,
-    }));
+    // ============================================================
+    // Partición Diamond / Borderline (cuando includeBorderline=true)
+    // ============================================================
+    // Diamond: comboScore >= 65 AND preScore >= 60 AND technicalScore >= 60.
+    // Borderline (1 razón gana, en orden): "fundamental fuerte, técnico
+    // deprimido" (pre>=70 + tech<55) > "técnico fuerte, fundamental marginal"
+    // (tech>=75 + pre<55) > "comboScore borderline" (50<=combo<=64).
+    function borderlineReason(r) {
+      const pre = r.preScore, tech = r.technicalScore, combo = r.comboScore;
+      if (pre != null && tech != null && pre >= 70 && tech < 55) {
+        return 'fundamental fuerte, técnico deprimido';
+      }
+      if (pre != null && tech != null && tech >= 75 && pre < 55) {
+        return 'técnico fuerte, fundamental marginal';
+      }
+      if (combo != null && combo >= 50 && combo <= 64) {
+        return 'comboScore borderline (50-64)';
+      }
+      return null;
+    }
+    function isDiamond(r) {
+      return r.comboScore != null && r.preScore != null && r.technicalScore != null
+        && r.comboScore >= 65 && r.preScore >= 60 && r.technicalScore >= 60;
+    }
+
+    let resultRows;
+    let borderlineRows = null;
+    if (includeBorderline) {
+      const diamonds = rows.filter(isDiamond).slice(0, Math.min(8, limit));
+      const diamondSet = new Set(diamonds.map((r) => r.symbol));
+      const bordersUnsorted = rows
+        .filter((r) => !diamondSet.has(r.symbol))
+        .map((r) => ({ row: r, reason: borderlineReason(r) }))
+        .filter((x) => x.reason != null);
+      // Sort por comboScore desc (fallback preScore) y cap 5.
+      bordersUnsorted.sort((a, b) => {
+        const av = a.row.comboScore ?? a.row.preScore ?? -1;
+        const bv = b.row.comboScore ?? b.row.preScore ?? -1;
+        return bv - av;
+      });
+      resultRows = diamonds;
+      borderlineRows = bordersUnsorted.slice(0, 5);
+    } else {
+      resultRows = rows.slice(0, limit);
+    }
+
+    function project(r, extra = {}) {
+      return {
+        symbol: r.symbol,
+        name: r.name,
+        sector: r.sector,
+        industry: r.industry,
+        gicsSector: r.gicsSector ?? null,
+        marketCap: r.marketCap,
+        price: r.price,
+        preScore: r.preScore,
+        technicalScore: r.technicalScore ?? null,
+        comboScore: r.comboScore ?? null,
+        wyckoffPhase: r.wyckoffPhase ?? null,
+        wyckoffEvents: r.wyckoffEvents ?? [],
+        gatePass: r.gatePass,
+        gateReasons: r.gatePass ? undefined : r.gateReasons,
+        metrics: {
+          roe: r.roe, roic: r.roic, fcfYield: r.fcfYield,
+          debtToEquity: r.debtToEquity, currentRatio: r.currentRatio,
+          grossMargin: r.grossMargin, netMargin: r.netMargin, pe: r.pe,
+          altmanZ: r.altmanZ ?? null,
+          altmanModel: r.altmanModel ?? null,
+          piotroski: r.piotroski ?? null,
+          piotroskiPartial: r.piotroskiPartial ?? null,
+          rsi: r.rsi ?? null,
+          cmf: r.cmf ?? null,
+        },
+        technicalBreakdown: r.technicalBreakdown ?? null,
+        ...extra,
+      };
+    }
+
+    const out = resultRows.map((r) => project(r));
+    const borderlineOut = borderlineRows
+      ? borderlineRows.map((x) => project(x.row, { borderlineReason: x.reason }))
+      : null;
 
     // Headers de observabilidad: edad del snapshot fundamental + técnico.
     const now = Date.now();
@@ -143,10 +206,11 @@ export default async function handler(req, res) {
     if (sortFallback) res.setHeader('X-Sort-Fallback', '1');
 
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-    return res.status(200).json({
+    const body = {
       meta: {
         ...snap.meta,
         returned: out.length,
+        returnedBorderline: borderlineOut ? borderlineOut.length : 0,
         filters: {
           mode,
           capMin,
@@ -157,10 +221,13 @@ export default async function handler(req, res) {
           sort,
           sortRequested: requestedSort,
           sortFallback,
+          includeBorderline,
         },
       },
       results: out,
-    });
+    };
+    if (borderlineOut) body.borderline = borderlineOut;
+    return res.status(200).json(body);
   } catch (e) {
     console.error('[screener]', e);
     return res.status(500).json({ error: e.message });
