@@ -13,8 +13,9 @@ import { computeTechnicalScore } from '../../lib/technicalScore.js';
 
 export const config = { maxDuration: 300 };
 
-// límite duro de símbolos a procesar por corrida. Yahoo a 5 req/s = ~24s por 120.
-const MAX_SYMBOLS = Number(process.env.TECHNICAL_MAX_SYMBOLS || 150);
+// límite duro de símbolos a procesar por corrida. Yahoo a 5 req/s = ~40s para 200.
+// Bumped a 200 (de 150) para evitar que nombres con preScore ~60 queden afuera.
+const MAX_SYMBOLS = Number(process.env.TECHNICAL_MAX_SYMBOLS || 200);
 
 export default async function handler(req, res) {
   const auth = req.headers.authorization || '';
