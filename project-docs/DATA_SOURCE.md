@@ -84,10 +84,13 @@ Típicamente ~300 pasan el gate. **No hay tiers Russell**. El size emerge endóg
 {
   "meta": {
     "updatedAt", "fiscalYear", "secCoverage", "gatePassers", "priced",
-    "withSector", "technicalUpdatedAt", "technicalScored",
+    "withSector", "nullDebtCount",
+    "technicalUpdatedAt", "technicalScored", "technicalAttempted",
+    "technicalCandleFailures", "technicalDegraded",
     "returned", "returnedBorderline",
-    "filters": { "mode", "capMin", "capMax", "sort", "sortRequested",
-                 "sortFallback", "includeBorderline" }
+    "filters": { "mode", "capMin", "capMax", "minScore", "sector",
+                 "gicsSector", "sort", "sortRequested", "sortFallback",
+                 "includeBorderline" }
   },
   "results": [{
     "symbol", "name", "sector", "industry", "gicsSector",
@@ -126,7 +129,7 @@ Típicamente ~300 pasan el gate. **No hay tiers Russell**. El size emerge endóg
 | `piotroski` | ✅ poblado | 0-9. Si faltan 1-2 checks, devuelve score con `piotroskiPartial=true`. Si faltan >2, `null` |
 | `debtToEquity` | ✅ correcto | `(LongTermDebt + ShortTermDebt) / Equity` real. El bug de "pasivos totales / equity" fue corregido |
 | `sector` / `industry` | ✅ mayormente poblado | Finnhub `/stock/profile2` (cache 30d en `symbol_metadata`) + fallback SEC `sicDescription`. **Filtro `sector=` ahora opera** |
-| `technicalScore` | ✅ poblado | Cron `refresh-technical` 10:00 UTC. Top 150 gate-passers por preScore. Wyckoff phase + RSI + CMF incluidos |
+| `technicalScore` | ✅ poblado | Cron `refresh-technical` 10:00 UTC. **Top 200** gate-passers por preScore (env `TECHNICAL_MAX_SYMBOLS`). Wyckoff phase + RSI + CMF incluidos |
 | `comboScore` | ✅ poblado | `0.5*preScore + 0.5*technicalScore`, redondeado |
 
 ---
@@ -136,7 +139,7 @@ Típicamente ~300 pasan el gate. **No hay tiers Russell**. El size emerge endóg
 1. **`pe` desde net income**: empresas sin ganancias → `pe` null. No es bug, es definición.
 2. **Cobertura US-centric**: EDGAR tickers son US-listed + ADRs. LATAM directos (BVN, EBR), Asia primary (7203 TM) no entran al snapshot — entran por `/deep` manual.
 3. **Ventana diaria 09:00-10:00 UTC**: `refresh-gems` regenera el snapshot desde cero, wipea scores técnicos hasta que `refresh-technical` corra. Durante esa hora, `mode=technical`/`combo` caen a preScore y el endpoint marca `meta.filters.sortFallback`.
-4. **Phase B procesa top 150**: si tu interés está fuera del top 150 por preScore, no tiene technicalScore. Manejado vía `/deep TICKER` que computa on-the-fly.
+4. **Phase B procesa top 200**: si tu interés está fuera del top 200 por preScore, no tiene technicalScore. Manejado vía `/deep TICKER` que computa on-the-fly. Override con env `TECHNICAL_MAX_SYMBOLS`.
 5. **Yahoo bloqueable**: si Yahoo bloquea IPs Vercel, `refresh-technical` cae y `meta.technicalUpdatedAt` queda viejo. Monitoreable.
 
 ---

@@ -132,7 +132,7 @@ Cero JSON que pegar. Los tres scans (fundamental/technical/combo) funcionan igua
 Es la única degradación conocida del Hunter:
 
 1. **09:00 UTC** — `refresh-gems` regenera el snapshot fundamental DESDE CERO sobre los ~6,000 filers EDGAR. En ese proceso, `technicalScore`/`comboScore` quedan en null (se sobrescriben).
-2. **10:00 UTC** — `refresh-technical` corre sobre el top 150 gate-passers por preScore, baja 400 días de candles de Yahoo, computa technicalScore + Wyckoff phase + comboScore.
+2. **10:00 UTC** — `refresh-technical` corre sobre el **top 200** gate-passers por preScore (env `TECHNICAL_MAX_SYMBOLS`), baja 400 días de candles de Yahoo, computa technicalScore v3 + Wyckoff phase + comboScore.
 3. **11:00 UTC** — `refresh-smart-money` computa insider + analyst drift sobre el top 100 por comboScore.
 4. **Durante esa ventana**: `mode=technical` y `mode=combo` caen a preScore. El endpoint expone esto en `meta.filters.sortFallback` y en el header `X-Sort-Fallback`.
 

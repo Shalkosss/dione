@@ -1,9 +1,10 @@
 # SMART MONEY
 
-[CAMBIOS vs versión anterior: `/smart-money` overview ahora ES LIVE — cron
-refresh-smart-money agendado 11:00 UTC computa insider clusters + analyst
-drift sobre el top 100 gate-passers. Endpoint `/api/smart-money` con
-filtros minScore/limit/ticker. 13F y dark pool siguen como paste manual.]
+[CAMBIOS vs versión anterior: marcado explícitamente que `/smart-money`
+(overview semanal sin ticker) está pendiente Fase 3 — alineado con
+COMMANDS_status. `/smart-money TICKER` sigue funcional parcial
+(insider + recs vía Finnhub auto; 13F y dark pool por paste Bloomberg).
+Resto del framework (4 fuentes, score, traps) intacto.]
 
 Tracking de capital institucional. Históricamente, seguir smart money
 con metodología tiene alpha real (~6-10% anual en insider clusters,
@@ -15,15 +16,12 @@ con metodología tiene alpha real (~6-10% anual en insider clusters,
 
 | Comando | Hoy | Por qué |
 |---|---|---|
-| `/smart-money TICKER` | ✅ AUTO | `GET /api/smart-money?ticker=TICKER` lee el snapshot precomputado (insider + analyst drift) o `404` si está fuera del top N |
-| `/smart-money` (overview) | ✅ AUTO | `GET /api/smart-money?limit=10` devuelve top N por score |
+| `/smart-money TICKER` | ✅ parcial | insider transactions + recommendation drift vía Finnhub auto. 13F y dark pool requieren paste Bloomberg |
+| `/smart-money` (overview) | 🔴 pendiente Fase 3 | requiere cron dedicado que agregue señales por ticker en Supabase. No existe hoy |
 
-Detalles:
-- El cron `refresh-smart-money` corre 11:00 UTC diario sobre el top 100
-  gate-passers (configurable con `SMART_MONEY_TOP_N`).
-- Tickers extra se agregan con `SMART_MONEY_SYMBOLS=AAPL,MSFT,...` env var.
-- 13F y dark pool siguen siendo paste Bloomberg — el free tier de Finnhub
-  no los cubre.
+Mientras tanto, el overview se sustituye por: pasar manualmente la
+watchlist a `/smart-money TICKER` ticker por ticker, o pegar el `HOLD`
++ `HDS` + `INSI` de Bloomberg para los nombres relevantes.
 
 ---
 

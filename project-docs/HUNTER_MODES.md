@@ -2,7 +2,10 @@
 
 [CAMBIOS vs versión anterior: scoring técnico ahora es DOBLE VÍA (v3).
 technicalScore = max(trendTrack, wyckoffTrack) + bonuses. Documentada la
-capa borderline del scan combo (param includeBorderline=true).]
+capa borderline del scan combo (param includeBorderline=true).
+2026-06: bumped top 150 → top 200 (TECHNICAL_MAX_SYMBOLS default). Spec
+corregido: la componente vol-track usa OBV + ADL slope (no CMF) y la
+capa borderline ahora respeta el `limit` del query.]
 
 Los 3 modos de búsqueda de oportunidades + Divergence.
 
@@ -40,9 +43,10 @@ core 12-24m, macro incierto donde quality > momentum.
 **Pregunta**: "¿Cuáles tickers tienen setup técnico fuerte AHORA?"
 
 **Estado backend**: ✅ LIVE con scoring **doble vía v3**. El cron
-`refresh-technical` (10:00 UTC) procesa el top 150 gate-passers por
-preScore, baja 400 días de candles de Yahoo, computa `technicalScore`
-(0-100), `wyckoffPhase`, `RSI`, `CMF` y los mergea al snapshot.
+`refresh-technical` (10:00 UTC) procesa el **top 200** gate-passers por
+preScore (override con env `TECHNICAL_MAX_SYMBOLS`), baja 400 días de
+candles de Yahoo, computa `technicalScore` (0-100), `wyckoffPhase`,
+`RSI`, `CMF` y los mergea al snapshot.
 
 ### Cómo se computa el score (v3 doble vía)
 
@@ -59,8 +63,12 @@ alto via Trend.
 - Golden Cross (30): edad del cruce SMA50↑SMA200. <30d=30, 30-90d=22, 90-180d=15
 - Distance to 52W high (15): <1%=15, ≤5%=13, ≤15%=10, ≤25%=5
 - Momentum 12-1 (15-18): percentil del batch. Top decile=18, top quintile=15
-- OBV/CMF trend (15): ambos positivos=15, solo CMF>0.05=8
-- RSI contextual (10): 40-65=10, 65-75=8, >75=2, <40 con GC=8
+- OBV + ADL slope 60d (15): **ambos positivos=15, uno positivo=8, ninguno=0**.
+  (Antes este campo decía "OBV/CMF": ese era el bug que subestimaba casos con
+  acumulación lenta — ADL slope captura eso, CMF no.)
+- RSI contextual (10): 40 ≤ rsi < 65 → 10; 65 ≤ rsi ≤ 75 → 8; >75 → 2;
+  <40 con GC activo → 8 (pullback en uptrend). El boundary 65 cae en el
+  bucket 65-75 (=8), no en 40-65.
 - Volume on breakouts (15): RVOL día max vol últimos 30d. >1.5=15, 1.2-1.5=8
 
 **VÍA B — Wyckoff Track (máx 100)**:
@@ -69,7 +77,9 @@ alto via Trend.
 - Test <30d con RVOL<0.7 = +15
 - SOS <30d con RVOL>1.5 = +15 (1.2-1.5 = +8)
 - P&F count target >30% upside = +10 (15-30% = +5)
-- OBV+CMF positivos durante lateralización = +15 (uno solo = +8)
+- OBV+CMF positivos durante lateralización Fase B/C = +15 (uno solo = +8).
+  Nota: aquí sí se usa CMF (no ADL) — el track lateral mide compresión
+  intra-rango, no slope multi-mes.
 
 **Bonuses sobre el max**:
 - +5 si ATR14 < 3% del precio (vol baja, stop más eficiente)
@@ -100,8 +110,9 @@ El field `technicalBreakdown` del response del screener tiene:
 4. **Fase E con re-acumulación** (solo si hay consolidación en uptrend)
 
 **Limitación**:
-- Phase B procesa **top 150 por preScore**. Si tu interés está fuera, no
-  tiene technicalScore. Usar `/wyckoff TICKER` o `/deep TICKER`.
+- Phase B procesa **top 200 por preScore** (env `TECHNICAL_MAX_SYMBOLS`).
+  Si tu interés está fuera, no tiene technicalScore. Usar `/wyckoff TICKER`
+  o `/deep TICKER`.
 - Buen setup técnico en empresa mediocre = profits cortos, no compounding.
 
 ---
@@ -133,8 +144,10 @@ viene en dos capas:
 - `comboScore ≥ 65 AND preScore ≥ 60 AND technicalScore ≥ 60`
 - Candidatos directos a `/deep`.
 
-**`borderline` (Capa 2 — Divergence)**: máx 5, cada uno con campo
-`borderlineReason` que dispara cuál criterio matcheó (en orden):
+**`borderline` (Capa 2 — Divergence)**: cap = `max(5, limit)` del query
+(antes era 5 hardcoded — dejaba afuera nombres legítimos cuando había 5+
+con mejor combo). Cada uno con campo `borderlineReason` que dispara cuál
+criterio matcheó (en orden):
 
 | Reason | Criterio | Lectura |
 |---|---|---|
