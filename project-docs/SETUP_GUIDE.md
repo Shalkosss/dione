@@ -1,32 +1,31 @@
 # SETUP GUIDE
 
-[CAMBIOS vs versión anterior: Phase B del scoring técnico marcado como
-LIVE (no pendiente). Sector tagging marcado como LIVE (Finnhub +
-fallback SEC). Solo quedan pendientes: poblar THESIS_LOG, /smart-money
-overview cron, monitoreo de fallos del cron. Inventario expandido para
-incluir DATA_SOURCE.md.]
+[CAMBIOS vs versión anterior: borrada la Fase 2 con endpoints fantasma
+(/api/portfolio, /api/smart-money, /api/log-thesis, /api/get-performance,
+/api/forward-portfolio — no existen). La app ya está live en
+https://dionee.vercel.app sin pasos pendientes de despliegue. Los
+pendientes son operativos. INSTRUCTIONS.md eliminado del inventario (es
+el system prompt del Project, no un .md). Inventario actualizado a 19
+archivos reales — ver INDEX.md.]
 
 ---
 
 ## ESTADO ACTUAL
 
 App live: **https://dionee.vercel.app**
-Endpoints en producción ([DATA_SOURCE.md](DATA_SOURCE.md) para schema completo):
+Endpoints reales en producción:
 - `GET /api/quote/[ticker]` — Finnhub, cache 30s
 - `GET /api/candles/[ticker]?period1=&period2=&interval=1d` — Yahoo proxy, cache 1h
-- `GET /api/screener?mode=&capMin=&capMax=&...` — Supabase snapshot, cache 5min
-- `GET /api/cron/refresh-gems` — cron diario 09:00 UTC (CRON_SECRET)
-- `GET /api/cron/refresh-technical` — cron diario 10:00 UTC (CRON_SECRET)
+- `GET /api/screener?mode=&capMin=&capMax=&minScore=&sector=&gicsSector=&sort=&limit=&includeFailed=&includeNoCap=&includeBorderline=` — Supabase snapshot, cache 5min
+- `GET /api/smart-money?ticker=&minScore=&limit=` — Supabase snapshot smart-money, cache 10min
+- `GET /api/healthz` — status del snapshot, no-store
+- `GET /api/cron/refresh-gems` — cron 09:00 UTC (CRON_SECRET)
+- `GET /api/cron/refresh-technical` — cron 10:00 UTC (CRON_SECRET)
+- `GET /api/cron/refresh-smart-money` — cron 11:00 UTC (CRON_SECRET)
 
-Pages live: Optimizer, Risk, Hidden Gems table, Screener (browser-side
-parallel), Thesis (local, paste manual).
+Pages live: Optimizer, Risk, Hidden Gems table, Thesis.
 
-Backends del Hunter:
-- Fundamental: ✅ LIVE (preScore + Altman + Piotroski + sector)
-- Técnico (Phase B): ✅ LIVE (technicalScore + Wyckoff + comboScore para top 150)
-
-**No hay pasos pendientes de despliegue.** Los pendientes son operativos
-y de monitoreo.
+**No hay pasos pendientes de despliegue.** Los pendientes son operativos.
 
 ---
 
@@ -38,7 +37,7 @@ y de monitoreo.
 3. Descripción: `Senior PM nivel JPM AM. Equity research multi-lente, smart money tracking, portafolio óptimo.`
 
 ### 1.2 Pegar custom instructions
-El system prompt de DIONE (lo que antes se llamaba "INSTRUCTIONS.md")
+El system prompt del DIONE (lo que antes se llamaba "INSTRUCTIONS.md")
 va en el campo **Custom instructions** del Project. NO es un archivo
 del knowledge base.
 
@@ -49,10 +48,8 @@ Los 20 archivos del [INDEX](INDEX.md). Esperar a que se procesen.
 ```
 /help
 /quick MELI
-/scan-combo limit=5
 ```
-Si responde con la lista de comandos, un análisis estructurado, y un
-top 5 con `meta.filters.mode="combo"`, OK.
+Si responde con la lista de comandos y un análisis estructurado, OK.
 
 ---
 
@@ -60,38 +57,35 @@ top 5 con `meta.filters.mode="combo"`, OK.
 
 ### A. Poblar THESIS_LOG
 Hoy está vacío. Cada `/deep` con conviction ≥ 3 debe gatillar
-`/log-thesis TICKER`. Mínimo n=10 antes de que `/performance` tenga
-señal estadística.
+`/log-thesis TICKER`. Mínimo n=10 antes de que `/performance` tenga señal.
 
-### B. `/smart-money` overview (cron dedicado)
-Hoy `/smart-money TICKER` funciona (insider + recs vía Finnhub). El
-overview sin ticker (top semanal) requiere cron que agregue señales por
-ticker en Supabase. Equivalente a `refresh-gems` pero para 13F + Form 4.
-**No implementado.**
+### B. ~~Activar Phase B del scoring técnico~~ ✅ LIVE
+`refresh-technical` corre 10:00 UTC sobre top 200 gate-passers, computa
+technicalScore v3 (doble vía Trend/Wyckoff) + comboScore y los mergea
+al snapshot. Ver [HUNTER_MODES](HUNTER_MODES.md) y
+[COMMANDS_status](COMMANDS_status.md).
 
-### C. Monitoreo de fallos de cron
-Hoy `console.error` en serverless ≠ alerta. Si `refresh-technical`
-falla un día (Yahoo bloquea, EDGAR rate-limit), nadie se entera salvo
-inspeccionar Vercel logs. Roadmap:
-- Healthcheck endpoint que devuelva 503 si `meta.technicalUpdatedAt > 26h`
-- Alerta opcional vía webhook (Discord/Telegram) cuando se cae
+### C. ~~Tagging de sector~~ ✅ LIVE
+Sector poblado vía Finnhub `/stock/profile2` con fallback SEC
+`submissions/sicDescription`, cache 30d en tabla `symbol_metadata`.
+El filtro `sector=` del screener opera case-insensitive contains.
+Coverage típica: 100% del snapshot.
 
-### D. Yahoo fallback para Phase B
-Si Yahoo bloquea IPs Vercel, `refresh-technical` muere. Stooq diario
-tiene OHLC histórico — puede ser fallback con menos resolución intraday
-pero suficiente para Wyckoff diario.
+### D. ~~/smart-money overview~~ ✅ LIVE
+Cron `refresh-smart-money` 11:00 UTC corre sobre top 100 por comboScore
+y computa insider clusters + analyst drift. Endpoint
+`/api/smart-money?limit=10` devuelve el overview.
 
-### E. Sector mapping a GICS L1
-Finnhub devuelve `finnhubIndustry` + a veces `gicsSector`; SEC fallback
-da `sicDescription`. El campo `sector` del snapshot es heterogéneo.
-Mapeo a GICS L1 estándar (11 categorías) permitiría filtro/heatmap
-consistente. **No bloqueante.**
+### E. Operación diaria (real pending)
+- Monitorear `meta.technicalDegraded` y `/api/healthz` después de
+  ventanas de mantenimiento de Yahoo/Finnhub.
+- Backtest formal por modo en `n ≥ 15` tesis del THESIS_LOG.
 
 ---
 
 ## FASE 3 — Workflow diario perpetuo
 
-### Mañana (15 min) — fuera de la ventana 09-10 UTC (Lima: 04-05 AM)
+### Mañana (15 min)
 - Chat nuevo en Project
 - `/macro` — régimen
 - `/scan-combo` — top oportunidades
@@ -118,17 +112,12 @@ consistente. **No bloqueante.**
 ### DIONE inventa precios
 - Está usando training data. Forzá: "llamá `/api/quote/TICKER` antes de responder"
 
-### `/scan-combo` devuelve todos los `technicalScore` en null
-- Probablemente estás en la ventana 09:00-10:00 UTC. Esperá 15 min y reintentá.
-- Si fuera de esa ventana: `meta.technicalUpdatedAt` >26h → `refresh-technical` cayó. Reintento manual con CRON_SECRET.
-
-### Sector siempre null
-- Solo pasa si `enrichSectors` cayó dos veces consecutivas (Finnhub + SEC submissions). Ver `meta.withSector / meta.gatePassers`.
-- Si <50%, hay problema upstream. Si ~80-90%, es la cobertura normal.
+### Respuestas cortas / no consulta archivos
+- Pedirlo explícito: "Consultando [WYCKOFF_FRAMEWORK.md](WYCKOFF_FRAMEWORK.md), analizá NOW"
 
 ### Memoria entre sesiones
-- No persiste. Al inicio de cada sesión pegá el último THESIS_LOG.md si
-  trabajás sobre tesis abiertas.
+- No persiste. Al inicio de cada sesión pegá el último THESIS_LOG.md
+  si trabajás sobre tesis abiertas.
 
 ### Key Finnhub que termina en `nag`
 - Es corrupción de un copy/paste viejo. La key real termina en `q420`.
@@ -142,7 +131,7 @@ consistente. **No bloqueante.**
 |---|---|
 | Semanal | WATCHLIST, THESIS_LOG |
 | Mensual | MANDATE (si cambió capital/horizonte), ajustes sugeridos por `/performance` |
-| Trimestral | Frameworks no usados, capacidades faltantes, revisar limitaciones del snapshot |
+| Trimestral | Frameworks no usados, capacidades faltantes |
 | Anual | Setup completo, backtest formal por modo |
 
 ---

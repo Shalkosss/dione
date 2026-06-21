@@ -155,7 +155,12 @@ export default async function handler(req, res) {
         return bv - av;
       });
       resultRows = diamonds;
-      borderlineRows = bordersUnsorted.slice(0, 5);
+      // El cap de 5 hardcoded dejaba afuera nombres legítimos cuando hay 5+
+      // candidatos por encima en combo (caso TILE: comboScore=54, 5 nombres
+      // con combo 55-64 lo desplazaban). Ahora usamos el limit del query
+      // (con piso de 5 para compat).
+      const borderlineCap = Math.max(5, limit);
+      borderlineRows = bordersUnsorted.slice(0, borderlineCap);
     } else {
       resultRows = rows.slice(0, limit);
     }

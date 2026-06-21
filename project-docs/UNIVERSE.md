@@ -49,15 +49,17 @@ Aplicado en el cron sobre el universo base. Es el corazón del filtro y
 |---|---|---|
 | ROE TTM | > 10% | Calidad mínima de retorno sobre equity |
 | FCF TTM | > 0 | Empresa genera caja, no la quema |
-| debtToEquity (proxy: pasivos totales / equity) | < 2 | Solidez razonable |
-| Altman Z-Score | si presente, ≥ 1.81 | No distress zone |
+| debtToEquity `(LongTermDebt + ShortTermDebt) / Equity` | < 2 | Solidez razonable (deuda financiera real, no pasivos totales) |
+| Altman Z (manufact.) / Z" (non-manuf, financieras) | si presente, ≥ 1.81 (Z) o ≥ 1.1 (Z") | No distress zone, threshold por modelo |
 
 El gate es **deliberadamente conservador y barato**. No mide moat, no mide
 crecimiento, no mide setup técnico. Su único trabajo: limpiar basura
 estructural antes de que DIONE razone.
 
-> **Falsos negativos conocidos**: el proxy de D/E rechaza injustamente
-> SaaS, aseguradoras, bancos. Quedan fuera del snapshot — entran por
+> **Falsos negativos residuales**: el D/E real ya recupera SaaS y muchas
+> aseguradoras (que antes el proxy de "pasivos totales" rechazaba por
+> reserves/float). Bancos con depósitos altos como pasivos no-deuda
+> siguen fuera salvo que tengan tags XBRL de LT debt — entran por
 > `/deep TICKER` manual.
 
 ---
@@ -118,9 +120,13 @@ on-demand.
 
 ## 8 — EXPANSIÓN FUTURA
 
-Si la infra escala (Fase 3+):
-- Smart money cron sobre el snapshot
-- Phase B del scoring técnico computado en Supabase
-- Sector tagging (hoy `sector` viene null del cron)
+Lo que YA está LIVE (estaba en esta lista en versiones viejas):
+- ✅ Smart money cron (`refresh-smart-money` 11:00 UTC, top 100 por combo)
+- ✅ Phase B técnico computado en Supabase (`refresh-technical` 10:00 UTC,
+  top 200 por preScore)
+- ✅ Sector tagging (Finnhub `/profile2` + SEC `submissions` fallback,
+  cache 30d en `symbol_metadata`)
+
+Pendiente real:
 - Cobertura de mercados no-EDGAR (UK, Europa continental, Japan) vía
   data source separado — costo no-zero, discutir antes.
