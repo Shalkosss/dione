@@ -136,7 +136,7 @@ Query params: `mode, capMin, capMax, minScore, sector, gateOnly, sort, limit (1-
 
 1. **`pe` desde net income**: empresas sin ganancias → `pe` null. Es definición, no bug.
 2. **Cobertura US-centric**: EDGAR cubre US-listed + ADRs. LATAM directos, Asia primary fuera del snapshot — entran por `/deep` manual.
-3. **Ventana diaria 09:00-10:00 UTC**: scores técnicos están null mientras corre la regeneración fundamental + Phase B. `meta.filters.sortFallback` lo expone.
+3. **Ventana diaria 09:00-11:00 UTC**: scores técnicos están null mientras corre la regeneración fundamental + Phase B. `meta.filters.sortFallback` lo expone.
 4. **Phase B procesa top 200 por preScore**: si un ticker pasa el gate pero tiene preScore bajo (< ~60), no se le computa technicalScore. Cubrible vía `/deep TICKER` o subiendo `TECHNICAL_MAX_SYMBOLS`.
 5. **Yahoo bloqueable**: si bloquea IPs Vercel, `refresh-technical` cae. `meta.technicalUpdatedAt` viejo = señal.
 

@@ -4,7 +4,8 @@
 Phase B del scoring técnico está LIVE (cron refresh-technical agendado
 10:00 UTC diario). Sector enrichment está LIVE (Finnhub + SEC fallback,
 cache 30d). Altman Z y Z" + Piotroski computados en lib/edgar.js.
-Ventana diaria 09:00-10:00 UTC documentada como degradación esperada.]
+Ventana diaria 09:00-11:00 UTC documentada como degradación esperada.
+Revisión 2026-10-12: ventana unificada a 09-11 UTC en todos los docs.]
 
 Estado real de cada comando, basado en el código fuente actual del repo,
 no en aspiraciones.
@@ -34,8 +35,8 @@ no en aspiraciones.
 | Comando | Estado | Cómo lo ejecuta DIONE |
 |---|---|---|
 | `/scan-fundamental [limit=N]` | ✅ AUTO | `GET /api/screener?mode=fundamental&limit=N` — rankea por preScore |
-| `/scan-technical [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=technical&limit=N` — rankea por technicalScore (precomputado por cron refresh-technical). **Ventana**: 09:00-10:00 UTC los scores se regeneran, durante esa hora el endpoint cae a preScore con `meta.filters.sortFallback` poblado |
-| `/scan-combo [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=combo&limit=N&includeBorderline=true` — rankea por comboScore (0.5·pre + 0.5·tech v3). **DIONE debe pasar `includeBorderline=true` siempre**. Response trae `results` (Diamond, max 8) + `borderline` (divergencias, max 5, con `borderlineReason`). Misma ventana 09-10 UTC |
+| `/scan-technical [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=technical&limit=N` — rankea por technicalScore (precomputado por cron refresh-technical). **Ventana**: 09:00-11:00 UTC los scores se regeneran, durante esa hora el endpoint cae a preScore con `meta.filters.sortFallback` poblado |
+| `/scan-combo [limit=N]` | ✅ AUTO ⏱ | `GET /api/screener?mode=combo&limit=N&includeBorderline=true` — rankea por comboScore (0.5·pre + 0.5·tech v3). **DIONE debe pasar `includeBorderline=true` siempre**. Response trae `results` (Diamond, max 8) + `borderline` (divergencias, max 5, con `borderlineReason`). Misma ventana 09-11 UTC |
 | `/scan-divergence` | 🟡 PARCIAL | DIONE cruza Fund vs Tech scores del snapshot. Funciona dentro de la ventana técnica |
 | `/hidden-gems` | ✅ AUTO | `GET /api/screener?mode=gems` — cap $300M-$2B |
 

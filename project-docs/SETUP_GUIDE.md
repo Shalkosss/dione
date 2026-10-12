@@ -1,12 +1,13 @@
 # SETUP GUIDE
 
-[CAMBIOS vs versión anterior: borrada la Fase 2 con endpoints fantasma
-(/api/portfolio, /api/smart-money, /api/log-thesis, /api/get-performance,
+[CAMBIOS 2026-10-12: inventario ampliado a 22 archivos (se suman
+BACKTEST_RESULTS y DIONE_MEMORY). `/api/smart-money` SÍ existe (cron 11:00 UTC).
+Versión previa: borrada la Fase 2 con endpoints fantasma
+(/api/portfolio, /api/log-thesis, /api/get-performance,
 /api/forward-portfolio — no existen). La app ya está live en
 https://dionee.vercel.app sin pasos pendientes de despliegue. Los
-pendientes son operativos. INSTRUCTIONS.md eliminado del inventario (es
-el system prompt del Project, no un .md). Inventario actualizado a 19
-archivos reales — ver INDEX.md.]
+pendientes son operativos. INSTRUCTIONS.md NO va al knowledge base (es
+el system prompt del Project). Inventario: 22 archivos — ver INDEX.md.]
 
 ---
 
@@ -42,7 +43,7 @@ va en el campo **Custom instructions** del Project. NO es un archivo
 del knowledge base.
 
 ### 1.3 Subir Project Knowledge
-Los 20 archivos del [INDEX](INDEX.md). Esperar a que se procesen.
+Los 22 archivos del [INDEX](INDEX.md). Esperar a que se procesen.
 
 ### 1.4 Test
 ```
@@ -138,5 +139,5 @@ y computa insider clusters + analyst drift. Endpoint
 
 ## INVENTARIO
 
-Ver [INDEX.md](INDEX.md). Son 20 archivos. Si encontrás un nombre fuera
+Ver [INDEX.md](INDEX.md). Son 22 archivos. Si encontrás un nombre fuera
 de ese índice, está deprecated.

@@ -193,16 +193,17 @@ desacuerdo?"
 
 ## VENTANA DE DEGRADACIÓN
 
-**Única ventana conocida**: 09:00-10:00 UTC diario.
+**Única ventana conocida**: 09:00-11:00 UTC diario (04:00-06:00 Lima).
 
-Durante esa hora:
+Durante esa ventana:
 - `refresh-gems` está regenerando el snapshot desde cero
 - `technicalScore`/`comboScore` están en null hasta que `refresh-technical` corra a las 10:00
 - El endpoint cae a sort por `preScore` y expone `meta.filters.sortFallback`
 
-Fuera de esa ventana (otras 23h del día), los 3 modos operan a capacidad
-completa. En Lima (UTC-5) la ventana es 04:00-05:00 AM — improbable que
-te afecte.
+Fuera de esa ventana (otras 22h del día), los 3 modos operan a capacidad
+completa. En Lima (UTC-5) la ventana es 04:00-06:00 AM — improbable que
+te afecte. Smart-money (`refresh-smart-money`, 11:00 UTC) se refresca
+al final de la ventana.
 
 ---
 

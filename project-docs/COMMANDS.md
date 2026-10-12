@@ -21,7 +21,32 @@ Comandos slash y workflow operativo. Usar como mensaje completo.
 Deep Research completo nivel institucional.
 **Output**: TL;DR → Tesis 1-3-1 → Top-down → Bull/Bear cases → Veredicto →
 Pre-mortem → Valuación → Business Quality → Setup Técnico + Wyckoff →
-Smart Money → Catalysts → Glosario.
+Smart Money → Catalysts → **Puntos de Entrada Sugeridos (HOY)** → Glosario →
+bloque THESIS_LOG → Cola Bloomberg.
+
+**Puntos de Entrada Sugeridos (HOY)** — sección obligatoria en todo `/deep`
+(ver DIONE_MEMORY §2):
+- Precio exacto de entrada + trigger de confirmación (ej. "cierra > $X con RVOL > 1.2")
+- Stop con justificación técnica (estructura + ATR)
+- TP1 / TP2 / TP3 con R:R de cada uno
+- Plazo esperado
+
+Antes de publicarla, pasar este checklist (si un ítem falla, la sección
+dice "NO ENTRAR HOY" y el rating baja a WATCH):
+
+| # | Chequeo | Regla de origen |
+|---|---|---|
+| 1 | Data fresca: última vela ≤ 7 días, adjclose ≈ quote (~0.2%) | DATA_SOURCE (staleness + drift) |
+| 2 | Earnings a > 5 días hábiles | MANDATE / CATALYST_CALENDAR |
+| 3 | Compliance de mandato + ruteo real/paper (cap, FCF, sizing, sector ≤35%) | MANDATE |
+| 4 | Catalizador NO descontado (lección QTEX) | DIONE_MEMORY |
+| 5 | Market cap cruzado quote vs screener (lección KLAC) | DIONE_MEMORY |
+| 6 | R:R ≥ 1:2.5 con stop estructural (Spring/LPS/swing low − ATR) | MANDATE + TECHNICAL_VALIDATED |
+| 7 | Insider S/P últimos 90d revisados (ignorar F/M) | SMART_MONEY |
+
+**Cola Bloomberg** (al final de cada `/deep`, para cerrar Smart Money):
+`TICKER HOLD`, `TICKER HDS`, `TICKER INSI`, `TICKER SI`, más `TICKER EE`
+/ `TICKER OMON` si hay earnings u opciones relevantes.
 
 ### `/quick TICKER`
 Análisis rápido en 5 párrafos.
@@ -93,8 +118,9 @@ Deep dive sectorial.
 ## SMART MONEY + CATALYSTS
 
 ### `/smart-money`
-Overview semanal: top tickers por SM score, clusters, whale moves. **Hoy
-no existe** — Fase 3. Ver [SMART_MONEY](SMART_MONEY.md).
+Overview: top tickers por SM score (insider clusters + analyst drift) vía
+`GET /api/smart-money?limit=10`. LIVE (cron 11:00 UTC). 13F y dark pool
+siguen por paste Bloomberg. Ver [SMART_MONEY](SMART_MONEY.md).
 
 ### `/smart-money TICKER`
 Análisis SM específico (insider + recs auto; 13F + dark pool por paste).
