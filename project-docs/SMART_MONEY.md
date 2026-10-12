@@ -1,10 +1,9 @@
 # SMART MONEY
 
-[CAMBIOS vs versión anterior: marcado explícitamente que `/smart-money`
-(overview semanal sin ticker) está pendiente Fase 3 — alineado con
-COMMANDS_status. `/smart-money TICKER` sigue funcional parcial
-(insider + recs vía Finnhub auto; 13F y dark pool por paste Bloomberg).
-Resto del framework (4 fuentes, score, traps) intacto.]
+[CAMBIOS 2026-10-12: `/smart-money` overview marcado LIVE (cron
+`refresh-smart-money` 11:00 UTC + endpoint `/api/smart-money`, verificado
+HTTP 200). Alineado con COMMANDS_status y DATA_SOURCE. Agregada tabla de
+códigos Form 4. Resto del framework (4 fuentes, score, traps) intacto.]
 
 Tracking de capital institucional. Históricamente, seguir smart money
 con metodología tiene alpha real (~6-10% anual en insider clusters,
@@ -16,12 +15,12 @@ con metodología tiene alpha real (~6-10% anual en insider clusters,
 
 | Comando | Hoy | Por qué |
 |---|---|---|
-| `/smart-money TICKER` | ✅ parcial | insider transactions + recommendation drift vía Finnhub auto. 13F y dark pool requieren paste Bloomberg |
-| `/smart-money` (overview) | 🔴 pendiente Fase 3 | requiere cron dedicado que agregue señales por ticker en Supabase. No existe hoy |
+| `/smart-money TICKER` | ✅ AUTO (parcial) | `GET /api/smart-money?ticker=TICKER` → `{ meta, ticker, result: { score, breakdown, insider, analyst } }`. 404 si el ticker está fuera del top 100 por comboScore (agregarlo a env `SMART_MONEY_SYMBOLS`) — en ese caso, Finnhub directo `/stock/insider-transactions` + `/stock/recommendation`. 13F, dark pool y SI: paste Bloomberg |
+| `/smart-money` (overview) | ✅ AUTO | `GET /api/smart-money?limit=10&minScore=0` → top N por score. Cron `refresh-smart-money` 11:00 UTC, top 100 gate-passers por comboScore + override. Cache 10 min. 503 si el snapshot no existe |
 
-Mientras tanto, el overview se sustituye por: pasar manualmente la
-watchlist a `/smart-money TICKER` ticker por ticker, o pegar el `HOLD`
-+ `HDS` + `INSI` de Bloomberg para los nombres relevantes.
+El snapshot solo cubre insider + analyst drift (componentes Form 4 y
+analyst del score). Para el SM Score completo hay que sumar 13F, dark
+pool y SI desde Bloomberg (`HOLD`, `HDS`, `INSI`, `SI`).
 
 ---
 
@@ -56,6 +55,19 @@ Cluster (3+ insiders en 30d) ~10-12% alpha.
 | Buy en pullback técnico | Combo poderoso con Wyckoff Spring |
 | Selling >50% holdings concentrado | Red flag |
 | Selling intermitente schedule | Vesting/diversificación, ignorar |
+
+**Códigos de transacción Form 4** (campo `transactionCode` en Finnhub):
+
+| Código | Qué es | Uso |
+|---|---|---|
+| **P** | Compra open-market discrecional | SEÑAL — la más informativa |
+| **S** | Venta open-market | SEÑAL si es discrecional (no 10b5-1) y del C-suite; pesa más a precios muy sobre el actual |
+| **F** | Retención de acciones para pagar impuestos (vesting) | RUIDO — ignorar |
+| **M** | Ejercicio/conversión de opciones o derivados | RUIDO — ignorar (salvo que vaya seguido de S el mismo día: tratar la S) |
+| A, G, J y otros | Grants, regalos, otros | Ignorar |
+
+Distinguir 10b5-1 vs discrecional es determinante: verificar con
+Bloomberg `INSI` o la nota al pie del Form 4 en EDGAR.
 
 ### 3. Dark Pool Activity
 
