@@ -1,132 +1,48 @@
-# UNIVERSE
+# UNIVERSE — v4.1 (14-nov-2026)
 
-[CAMBIOS vs versión anterior: eliminado el sistema de Tiers basado en rank
-(Russell 1000/2000/3000, FTSE 350, STOXX 600, etc.). Sustituido por
-filtros funcionales aplicados sobre el universo EDGAR completo. El size
-emerge endógeno (~6,000 filers escaneados → ~300 pasan gate). Mantenidas
-las excepciones BVL Lima y la asignación de cap range por modo del Hunter.]
+[CAMBIOS: corregidas las partes viejas (el D/E ya no es proxy de pasivos totales y el sector ya no viene nulo en todos). Tramos por capitalización y tablero de megacaps. Sin techo de capitalización. El scan busca en los 11 sectores.]
 
-Define qué tickers entran al pipeline de DIONE en cualquier modo del
-Hunter. NO hay tiers Russell ni listas curadas a mano: el universo es
-todo filer SEC que sobrevive los filtros funcionales abajo.
+## 1. Base
 
----
+Todos los filers SEC con datos XBRL (6,356 al 14-nov-2026). El cron `refresh-gems` los filtra y guarda el snapshot. Detalle técnico en `DATA_SOURCE.md` y `README_HIDDEN_GEMS.md`.
 
-## 1 — UNIVERSO BASE
+## 2. Filtros duros
 
-Punto de partida: **todos los filers SEC con datos XBRL en EDGAR** (~6,000).
-El cron diario (`/api/cron/refresh-gems`) los baja, los pasa por el gate
-de calidad, y guarda un snapshot en Supabase. DIONE lee ese snapshot vía
-`/api/screener`.
+| Filtro | Criterio |
+|---|---|
+| Precio | Mayor a $3 |
+| Liquidez (ADV 30 días) | Mayor a $1M para aparecer. Mayor a $5M para la cuenta real |
+| Bolsa | NYSE, NASDAQ, AMEX |
+| Auditor | Sin cambio en 12 meses |
+| Going concern | Sin calificación |
+| SPAC | Solo con fusión cerrada |
 
-No hay "Tier 1 / Tier 2 / Tier 3" basado en market cap rank. El tier
-emerge del cap range que pidas en el query.
+## 3. Quality gate del snapshot
 
----
+ROE TTM mayor a 10%, FCF TTM positivo, `(deuda de largo + deuda de corto) / patrimonio` menor a 2, Altman fuera de zona de quiebra cuando se puede calcular. Pasan unos 500.
 
-## 2 — FILTROS DUROS (eliminatorios)
+Límites conocidos del gate:
 
-Todo ticker que falle uno queda fuera del snapshot, sin excepción.
+1. Rechaza a las empresas con `debtToEquity` nulo, y ahí caen muchas sin deuda.
+2. Deja fuera por construcción a bancos, aseguradoras y REITs, y a empresas con patrimonio reducido por recompras o deuda alta (ORCL y LLY, por ejemplo).
+3. Varios megacaps no aparecen en el snapshot sin que la causa esté identificada (GOOGL, META, AVGO, AMD, TSLA, V, MA al 14-nov-2026). Revisar en la Fase 3 del roadmap.
+4. Solo los 200 mejores por preScore reciben cálculo técnico en el backend.
+5. `gicsSector` falta en cerca del 42% de los nombres con score.
 
-| Filtro | Criterio | Razón |
+El gate es un pre-filtro barato. No es una opinión sobre la empresa.
+
+## 4. Tramos por capitalización
+
+| Tramo | Rango | Cómo entra al análisis |
 |---|---|---|
-| Precio | > $3 USD | Anti-penny stock |
-| Volumen × Precio (ADV 30d) | > $1M USD/día | Liquidez mínima: entrás/salís con $5K sin mover el book |
-| Listing venue | NYSE, NASDAQ, AMEX | No OTC, no pink sheets |
-| Auditor change | NO cambios últimos 12 meses | Red flag de fraud |
-| Going concern | NO qualification en último 10-K | Bankruptcy risk |
-| SPAC status | Solo post-merger completed | Pre-merger = especulación pura |
-| Trading status | Activo (no suspendido) | — |
+| Megacaps | Más de $200B | Tablero de megacaps de `/scan`, pasen o no el gate |
+| Descubrimiento | $2B a $200B | Ranking de `/scan` en los 11 sectores, máximo 3 nombres por sector |
+| Small caps | $300M a $2B | `/scan cap=small`. Solo papel o tamaño mínimo en real, por liquidez |
 
----
+## 5. Lo que entra por `/deep` directo
 
-## 3 — QUALITY GATE (funcional, cap-independiente)
+Financieras, REITs, ADRs que no reportan en formato US GAAP (TSM), acciones de la BVL y cualquier ticker que Rodrigo pida. El universo define el scan, no limita el research.
 
-Aplicado en el cron sobre el universo base. Es el corazón del filtro y
-**reemplaza la jerarquía Russell**.
+## 6. Excluidos siempre
 
-| Métrica | Umbral | Por qué |
-|---|---|---|
-| ROE TTM | > 10% | Calidad mínima de retorno sobre equity |
-| FCF TTM | > 0 | Empresa genera caja, no la quema |
-| debtToEquity `(LongTermDebt + ShortTermDebt) / Equity` | < 2 | Solidez razonable (deuda financiera real, no pasivos totales) |
-| Altman Z (manufact.) / Z" (non-manuf, financieras) | si presente, ≥ 1.81 (Z) o ≥ 1.1 (Z") | No distress zone, threshold por modelo |
-
-El gate es **deliberadamente conservador y barato**. No mide moat, no mide
-crecimiento, no mide setup técnico. Su único trabajo: limpiar basura
-estructural antes de que DIONE razone.
-
-> **Falsos negativos residuales**: el D/E real ya recupera SaaS y muchas
-> aseguradoras (que antes el proxy de "pasivos totales" rechazaba por
-> reserves/float). Bancos con depósitos altos como pasivos no-deuda
-> siguen fuera salvo que tengan tags XBRL de LT debt — entran por
-> `/deep TICKER` manual.
-
----
-
-## 4 — SIZE EMERGE ENDÓGENO
-
-Sobre ~6,000 filers escaneados, típicamente:
-- ~1,500 tienen precio + shares limpios (priced)
-- ~300 pasan el gate (gatePassers)
-
-Esa cifra fluctúa con el régimen de earnings. No es un target.
-
----
-
-## 5 — ASIGNACIÓN DE CAP RANGE POR MODO DEL HUNTER
-
-El cap range no define qué tickers existen, define qué slice del snapshot
-querés mirar:
-
-| Modo | Cap range típico | Query |
-|---|---|---|
-| Fundamental puro | $500M – $200B | `capMin=500M&capMax=200B` |
-| Técnico-Wyckoff puro | $300M – $50B | `capMin=300M&capMax=50B` |
-| Combinado (Diamond) | $1B – $100B | `capMin=1B&capMax=100B` |
-| Hidden Gems (opt-in) | $300M – $2B | `capMin=300M&capMax=2B` |
-
----
-
-## 6 — EXCEPCIONES DE COBERTURA
-
-### BVL Lima
-Permitido solo en cuenta real con cap < 10% del portafolio. SCCO, BAP,
-FERREYC son los líquidos. Resto: volúmenes muy bajos para entrar/salir.
-**No están en el snapshot** (EDGAR no los cubre): se analizan vía `/deep`
-con paste manual de fundamentales.
-
-### ADRs y empresas extranjeras con filing SEC
-Si filan 20-F en EDGAR, entran al gate como cualquier US listed. Si no
-filan, quedan fuera del snapshot — vía `/deep` manual.
-
-### Override manual
-`/deep TICKER` funciona sobre cualquier ticker válido aunque no esté en
-el snapshot. El universo define el scan sistemático, no el research
-on-demand.
-
----
-
-## 7 — LO QUE NO ENTRA (ni con override)
-
-- Crypto-equity sin fundamentals (gestionado aparte)
-- OTC, pink sheets, Level 1 ADRs
-- SPACs pre-merger
-- Empresas con auditor changed last 12m
-- Empresas con going-concern qualification
-- Tickers suspendidos
-
----
-
-## 8 — EXPANSIÓN FUTURA
-
-Lo que YA está LIVE (estaba en esta lista en versiones viejas):
-- ✅ Smart money cron (`refresh-smart-money` 11:00 UTC, top 100 por combo)
-- ✅ Phase B técnico computado en Supabase (`refresh-technical` 10:00 UTC,
-  top 200 por preScore)
-- ✅ Sector tagging (Finnhub `/profile2` + SEC `submissions` fallback,
-  cache 30d en `symbol_metadata`)
-
-Pendiente real:
-- Cobertura de mercados no-EDGAR (UK, Europa continental, Japan) vía
-  data source separado — costo no-zero, discutir antes.
+OTC y pink sheets, SPAC sin fusión, tickers suspendidos, empresas con cambio de auditor reciente o going concern, cripto.

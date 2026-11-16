@@ -1,217 +1,98 @@
-# HUNTER MODES
+# HUNTER MODES — v4.1 (14-nov-2026)
 
-[CAMBIOS vs versión anterior: scoring técnico ahora es DOBLE VÍA (v3).
-technicalScore = max(trendTrack, wyckoffTrack) + bonuses. Documentada la
-capa borderline del scan combo (param includeBorderline=true).
-2026-06: bumped top 150 → top 200 (TECHNICAL_MAX_SYMBOLS default). Spec
-corregido: la componente vol-track usa OBV + ADL slope (no CMF) y la
-capa borderline ahora respeta el `limit` del query.]
+[CAMBIOS v4.1 vs v4: el scan ya no se limita a 3 sectores. Busca en los 11 con tope de 3 nombres por sector, y la vista sectorial pasa a expresarse con ETFs. Se agrega la regla de diversidad del pool y el scan por eventos como hipótesis en prueba. Motivo en `DEEPS_BACKFILL_2026-11.md`.]
 
-Los 3 modos de búsqueda de oportunidades + Divergence.
+[CAMBIOS v4 vs v3: el fundamental filtra y el técnico ordena. Se elimina el umbral doble del Diamond. Megacaps en tablero aparte. Cadencia semanal. Evidencia en `BACKTEST_2026-11.md`.]
 
 ---
 
-## MODO 1 — FUNDAMENTAL
+## 1. Por qué cambió
 
-**Pregunta**: "¿Cuáles son las mejores empresas del universo según
-consenso de frameworks fundamentales?"
+1. preScore y technicalScore no están correlacionados (Spearman −0.02). Pedir los dos altos dejaba unos 8 nombres de 6,356.
+2. Ningún score técnico probado predice retornos en large caps. Usarlo de compuerta descarta nombres sin base.
+3. Las variables del scan son lentas. Correrlo a diario devuelve la misma lista. La tarea diaria es el `/tracker`.
+4. Los 33 veredictos de mayo a octubre rindieron 14 puntos menos que SPY sin importar el rating, porque el pool estaba concentrado en tecnología y beta alta. El mayor riesgo medido de DIONE es la concentración temática de las ideas.
+5. La cartera limitada a los 3 sectores con mejor momentum tuvo peor Sharpe (0.63) que la que reparte con tope por sector (0.71) y más drawdown.
 
-**Estado backend**: ✅ LIVE. El cron `refresh-gems` (09:00 UTC)
-precomputa preScore + Altman Z/Z" + Piotroski + sector en Supabase.
-`/api/screener?mode=fundamental` rankea por preScore.
+## 2. `/scan`
 
-**Cap range default**: $500M – $200B (overridable con `capMin`/`capMax`).
+Cadencia semanal, o cuando cambie la vista de `/macro`.
 
-**Filtros mínimos**:
-- Composite Fundamental Score ≥ 70/100 (preScore como proxy hoy)
-- Beneish M-Score < -1.78 (no en snapshot — DIONE lo verifica on-the-fly si aplica)
-- Altman Z-Score > 2.0 (campo `altmanZ` en results, modelo Z o Z")
-- Sector-relevant frameworks aplicados
+**Paso 0. Régimen.** Una línea: SPY contra su SMA200, porcentaje del universo sobre su SMA200, VIX. Define el tamaño de las entradas (`TECHNICAL_VALIDATED.md`, sección 3).
 
-**Output**: Top 10 ranked. Por cada uno: breakdown + 1-frase tesis +
-sector + cap + price + catalyst próximo.
+**Paso 1. Tablero sectorial.** Los 11 sectores GICS con retorno a 1, 3, 6 y 12 meses de su ETF y la vista vigente de `/macro` (3 sobreponderados, 2 infraponderados). La vista sectorial decide qué ETFs van en el núcleo táctico del `MANDATE.md`. En el scan de acciones funciona como desempate y nunca como filtro.
 
-**Cuándo**: mercados con valoraciones bajas (post-corrección), build de
-core 12-24m, macro incierto donde quality > momentum.
+**Paso 2. Descubrimiento en los 11 sectores.**
 
-**Limitación**: "buenas empresas" no garantiza alpha. Cruzar con Combo.
+1. `GET /api/screener?mode=fundamental&limit=100`. Mientras `gicsSector` venga `null` en parte del snapshot, completar con el campo `sector`.
+2. Filtro: pasar el gate, capitalización entre $2B y $200B, ADV mayor a $5M.
+3. Calidad relativa: mitad superior del preScore dentro de su sector.
+4. Score de estado de tendencia v4 calculado desde `/api/candles`.
+5. Salida: 12 nombres, máximo 3 por sector, ordenados por score. A igualdad, primero los de sectores sobreponderados. Cada uno con etiqueta de tendencia, orden sugerida y marca de novedad.
 
----
+**Paso 3. Tablero de megacaps.** Las ~35 empresas de más de $200B, pasen o no el gate: etiqueta de tendencia, distancia a la SMA50, fuerza relativa contra SPY a 63 días y cambio respecto al scan anterior.
 
-## MODO 2 — TÉCNICO-WYCKOFF
+**Paso 4. Propuesta para `/deep`.** Máximo 3 nombres, de sectores distintos, con el motivo.
 
-**Pregunta**: "¿Cuáles tickers tienen setup técnico fuerte AHORA?"
+### Regla de diversidad del pool
 
-**Estado backend**: ✅ LIVE con scoring **doble vía v3**. El cron
-`refresh-technical` (10:00 UTC) procesa el **top 200** gate-passers por
-preScore (override con env `TECHNICAL_MAX_SYMBOLS`), baja 400 días de
-candles de Yahoo, computa `technicalScore` (0-100), `wyckoffPhase`,
-`RSI`, `CMF` y los mergea al snapshot.
+No más del 40% de las tesis vivas (`SIN_ORDEN`, `ARMADA`, `ABIERTA`) en un mismo sector o tema. Si Rodrigo pide un `/deep` que rompe ese tope, DIONE lo hace y lo avisa en la primera línea. "Tema" incluye cadenas que cruzan sectores: IA y data centers agrupa semiconductores, memoria, energía para data centers y neoclouds.
 
-### Cómo se computa el score (v3 doble vía)
+### Marcas de novedad
 
-```
-technicalScore = max(trendTrack, wyckoffTrack) + bonuses
-```
+| Marca | Significado |
+|---|---|
+| NUEVO | No estaba en el scan anterior |
+| SUBE / BAJA | Cambió 3 o más puestos |
+| EN LOG | Tiene tesis activa. Se lista al pie con su estado |
 
-El ticker gana por su **mejor vía**, no por la suma. Un ticker en
-acumulación Wyckoff puro con SMA50<SMA200 puede salir alto via Wyckoff.
-Un ticker en uptrend establecido sin estructura Wyckoff clara puede salir
-alto via Trend.
+Un nombre con `/deep` en los últimos 30 días y sin cambio de etiqueta no vuelve a proponerse.
 
-**VÍA A — Trend Track (máx 100)**:
-- Golden Cross (30): edad del cruce SMA50↑SMA200. <30d=30, 30-90d=22, 90-180d=15
-- Distance to 52W high (15): <1%=15, ≤5%=13, ≤15%=10, ≤25%=5
-- Momentum 12-1 (15-18): percentil del batch. Top decile=18, top quintile=15
-- OBV + ADL slope 60d (15): **ambos positivos=15, uno positivo=8, ninguno=0**.
-  (Antes este campo decía "OBV/CMF": ese era el bug que subestimaba casos con
-  acumulación lenta — ADL slope captura eso, CMF no.)
-- RSI contextual (10): 40 ≤ rsi < 65 → 10; 65 ≤ rsi ≤ 75 → 8; >75 → 2;
-  <40 con GC activo → 8 (pullback en uptrend). El boundary 65 cae en el
-  bucket 65-75 (=8), no en 40-65.
-- Volume on breakouts (15): RVOL día max vol últimos 30d. >1.5=15, 1.2-1.5=8
+### Parámetros
 
-**VÍA B — Wyckoff Track (máx 100)**:
-- Phase base: C+(Spring+Test)=20, D=18, B=12, A=5, E=8
-- Spring <60d con RVOL<0.85 = +25
-- Test <30d con RVOL<0.7 = +15
-- SOS <30d con RVOL>1.5 = +15 (1.2-1.5 = +8)
-- P&F count target >30% upside = +10 (15-30% = +5)
-- OBV+CMF positivos durante lateralización Fase B/C = +15 (uno solo = +8).
-  Nota: aquí sí se usa CMF (no ADL) — el track lateral mide compresión
-  intra-rango, no slope multi-mes.
+| Parámetro | Efecto |
+|---|---|
+| `sector=XLV` | Un solo sector, 10 nombres |
+| `cap=small` | Rango $300M a $2B, ADV mayor a $1M |
+| `limit=N` | Tamaño de la lista |
 
-**Bonuses sobre el max**:
-- +5 si ATR14 < 3% del precio (vol baja, stop más eficiente)
-- +5 si ADV > $10M (liquidez para entrar/salir)
-- -10 si A/D bearish divergence sostenida >30d
+## 3. `/scan-eventos` (hipótesis en prueba, solo papel)
 
-El field `technicalBreakdown` del response del screener tiene:
-```
-{ trendTrack, wyckoffTrack, composite, bonuses, viaUsed: "trend"|"wyckoff",
-  goldenCrossAge, rsi, cmf, momentum12_1, wyckoffPhase }
-```
+El scan por niveles devuelve siempre lo mismo porque mira variables lentas. Un scan por eventos devuelve nombres nuevos cada día porque lo dispara algo que ocurrió.
 
-**Cap range default**: $300M – $50B.
+Disparador: empresa que reportó en las últimas 5 sesiones y cumple las tres condiciones:
 
-**Filtros mínimos**:
-- Composite Technical Score ≥ 70/100 (`technicalScore` del snapshot)
-- Wyckoff phase identificada (campo `wyckoffPhase`, no null)
-- Volume signature positiva (campo `cmf` > 0 o A/D Line trending)
-- Anti-chatarra heredado del gate fundamental
+1. Sorpresa positiva en la métrica que el mercado venía castigando.
+2. Guía al alza o reafirmada por encima del consenso.
+3. Reacción de precio que se sostiene: cierre del día 1 en el tercio superior de su rango y sin perder el mínimo de ese día en las sesiones siguientes.
 
-**Output**: Top 10. Breakdown + Wyckoff phase y eventos + trade plan +
-1-frase setup + catalyst.
+Fuente de fechas y documentos: 8-K ítem 2.02 en SEC EDGAR, sin key. DIONE lee el comunicado y clasifica. Entrada preferida en el primer retroceso posterior al reporte, nunca antes del reporte.
 
-**Priorización Wyckoff**:
-1. **Fase C confirmada** (Spring + test) — max R:R
-2. **Fase B tardía** (A/D Line subiendo en lateral)
-3. **Fase D** (SOS/LPS con volumen)
-4. **Fase E con re-acumulación** (solo si hay consolidación en uptrend)
+Respaldo: el drift post-earnings es la anomalía mejor documentada a 1-3 meses, y es el patrón que ya funcionó en los concursos (beat con guía al alza funcionó, beat con guía cauta no). Falta el test propio con universo point-in-time. Hasta tenerlo, las ideas de este modo van al log marcadas `thesis_mode: "eventos"` y solo en papel. Con 30 registros se decide si pasa a ser el scan principal.
 
-**Limitación**:
-- Phase B procesa **top 200 por preScore** (env `TECHNICAL_MAX_SYMBOLS`).
-  Si tu interés está fuera, no tiene technicalScore. Usar `/wyckoff TICKER`
-  o `/deep TICKER`.
-- Buen setup técnico en empresa mediocre = profits cortos, no compounding.
+## 4. Otros modos
 
----
-
-## MODO 3 — COMBINADO (Diamond Tier)
-
-**Pregunta**: "¿Cuáles tickers tienen fundamentales sólidos Y setup
-técnico ahora?"
-
-**Estado backend**: ✅ LIVE. `comboScore = round(0.5·preScore + 0.5·technicalScore)`,
-computado por `refresh-technical` y merguado al snapshot.
-
-**Cap range default**: $1B – $100B.
-
-**Filtros**:
-- preScore ≥ 70
-- technicalScore ≥ 70
-- gate fundamental aplicado
-
-**Output**: Top 5-10 ranked por `comboScore`. Breakdown + SM score +
-catalyst calendar + mini-tesis 1-3-1 + recommendation.
-
-### Capa borderline (ON por default para DIONE)
-
-DIONE debe llamar `/scan-combo` con `includeBorderline=true`. El response
-viene en dos capas:
-
-**`results` (Capa 1 — Diamond)**: máx 8.
-- `comboScore ≥ 65 AND preScore ≥ 60 AND technicalScore ≥ 60`
-- Candidatos directos a `/deep`.
-
-**`borderline` (Capa 2 — Divergence)**: cap = `max(5, limit)` del query
-(antes era 5 hardcoded — dejaba afuera nombres legítimos cuando había 5+
-con mejor combo). Cada uno con campo `borderlineReason` que dispara cuál
-criterio matcheó (en orden):
-
-| Reason | Criterio | Lectura |
+| Modo | Uso | Estado |
 |---|---|---|
-| `fundamental fuerte, técnico deprimido` | `pre≥70 AND tech<55` | Quality en venta. Posible Wait Tier / Spring potencial |
-| `técnico fuerte, fundamental marginal` | `tech≥75 AND pre<55` | Momentum sin fundamentals. Posible Trader Play / blow-off top |
-| `comboScore borderline (50-64)` | `50≤combo≤64` | Cerca del threshold. Revisar antes de descartar |
+| `/scan-fundamental` | Ranking por calidad para el núcleo de 12-24 meses | Funciona con el snapshot |
+| `/scan-pullback` | Etiquetas RETROCESO y EN ZONA en todos los sectores, máximo 3 por sector | DIONE lo calcula |
+| `/scan-divergence` | Calidad alta en su sector con etiqueta ROTA o RECUPERANDO. Va a `SIN_ORDEN` | DIONE lo calcula |
+| `/megacaps` | Solo el tablero del paso 3 | DIONE lo calcula |
+| `/scan-short` | Ver `SHORT_FRAMEWORK.md`. Solo papel | Manual |
 
-DIONE debe mostrar ambas capas con el header `⚠️ BORDERLINE — revisar
-con /deep antes de descartar` sobre la capa 2.
+Se retiran `/scan-technical`, los niveles Diamond, Wait y Trader Play, y la prioridad de fases Wyckoff en scans.
 
-### Sub-categorías de Diamond (DIONE las asigna razonando sobre el breakdown)
+## 5. Qué decide cada capa
 
-**Diamond Tier** — pre ≥ 70 Y tech ≥ 70
-- Acción: entrar agresivo, sizing según conviction + Kelly
-- Real: 5-15%. Paper: 10-25%.
-
-**Wait Tier** — pre ≥ 70, tech < 50 → ahora aparece en `borderline` como
-"fundamental fuerte, técnico deprimido". DIONE no entra, watchlist con
-alerta cuando técnico mejore.
-
-**Trader Play** — pre < 50, tech ≥ 80 → ahora aparece en `borderline`
-como "técnico fuerte, fundamental marginal". DIONE sizing pequeño
-(max 3%), stop estricto, horizonte 1-3m máx.
-
----
-
-## MODO BONUS — DIVERGENCE HUNTER
-
-**Pregunta**: "¿Dónde hay mispricing porque los lentes están en
-desacuerdo?"
-
-**Filtro** (DIONE cruza scores del snapshot):
-- |preScore - technicalScore| > 30 puntos, cualquier dirección
-- O: SM ≥ 80 (computado on-the-fly) pero pre/tech < 50
-
-**Sub-tipos**:
-1. **High fund, low tech**: quality en venta. Spring potencial.
-2. **Low fund, high tech**: momentum sin fundamentals — burbuja o cambio narrativa.
-3. **High tech, low SM**: retail rally. Blow-off top probable.
-4. **Low tech, high SM**: smart money posicionándose antes del breakout.
-
----
-
-## VENTANA DE DEGRADACIÓN
-
-**Única ventana conocida**: 09:00-11:00 UTC diario (04:00-06:00 Lima).
-
-Durante esa ventana:
-- `refresh-gems` está regenerando el snapshot desde cero
-- `technicalScore`/`comboScore` están en null hasta que `refresh-technical` corra a las 10:00
-- El endpoint cae a sort por `preScore` y expone `meta.filters.sortFallback`
-
-Fuera de esa ventana (otras 22h del día), los 3 modos operan a capacidad
-completa. En Lima (UTC-5) la ventana es 04:00-06:00 AM — improbable que
-te afecte. Smart-money (`refresh-smart-money`, 11:00 UTC) se refresca
-al final de la ventana.
-
----
-
-## ADAPTACIÓN POR RÉGIMEN MACRO
-
-| Régimen | Modo prioritario | Razón |
+| Capa | Decide | Herramienta |
 |---|---|---|
-| Goldilocks | Combinado, Diamond | Multiples expanden, momentum dura |
-| Reflation | Técnico, value plays | Cyclicals lideran |
-| Stagflation | Fundamental (quality), defensivos | Quality protege |
-| Deflation | Cash + Fundamental selectivo | Bear market |
+| Régimen | Cuánto riesgo | SPY contra SMA200, amplitud |
+| Sector | Qué ETFs van en el núcleo táctico. Desempate en el scan | Vista de `/macro`, registrada |
+| Gate y calidad relativa | Qué queda fuera | Snapshot fundamental |
+| Estado de tendencia | En qué orden mirar y qué tipo de orden | Score v4 |
+| `/deep` | Tesis, objetivo, orden con stop | Valuación, adversarial, pre-mortem |
+| `/tracker` | Si lo anterior funcionó | THESIS_LOG |
+
+## 6. Backend
+
+Crons, ventana 09:00-11:00 UTC y schema en `DATA_SOURCE.md`. Los campos `technicalScore`, `comboScore`, `wyckoffPhase` y `borderline` del snapshot son v3 y no deciden.

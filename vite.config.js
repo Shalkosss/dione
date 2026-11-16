@@ -67,8 +67,52 @@ export default defineConfig(({ mode }) => {
     },
   };
 
+  // Plugin de dev — sirve /api/theses y /api/theses/<id> ejecutando las mismas
+  // funciones de Vercel (api/theses.js y api/theses/[id].js). Necesita en
+  // .env.local: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y THESES_TOKEN.
+  const devThesesShim = {
+    name: "dione-dev-theses-shim",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = new URL(req.url || "/", "http://localhost");
+        const match = url.pathname.match(/^\/api\/theses(?:\/([^/]+))?$/);
+        if (!match) return next();
+
+        for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "THESES_TOKEN"]) {
+          if (env[k]) process.env[k] = env[k];
+        }
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        const text = Buffer.concat(chunks).toString("utf8");
+        const isJson = String(req.headers["content-type"] || "").includes("application/json");
+
+        req.query = {
+          ...Object.fromEntries(url.searchParams),
+          ...(match[1] ? { id: decodeURIComponent(match[1]) } : {}),
+        };
+        try {
+          req.body = isJson && text ? JSON.parse(text) : text;
+        } catch {
+          req.body = text;
+        }
+        res.status = (code) => { res.statusCode = code; return res; };
+        res.json = (obj) => {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(obj));
+        };
+
+        try {
+          const mod = await server.ssrLoadModule(match[1] ? "/api/theses/[id].js" : "/api/theses.js");
+          await mod.default(req, res);
+        } catch (e) {
+          res.status(500).json({ success: false, error: `dev shim: ${e.message}` });
+        }
+      });
+    },
+  };
+
   return {
-    plugins: [react(), devQuoteShim],
+    plugins: [react(), devQuoteShim, devThesesShim],
     server: {
       port: 5173,
       proxy: {

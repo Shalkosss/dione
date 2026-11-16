@@ -1,5 +1,7 @@
 # WYCKOFF FRAMEWORK — Las 3 leyes + 5 fases cuantificadas
 
+[CAMBIOS 2026-11-08: Spring y Test dejan de usar volumen como compuerta. El precio decide y el volumen clasifica. CAMBIOS 2026-11-14: Wyckoff queda como referencia descriptiva; no puntúa ni prioriza scans.]
+
 Wyckoff es el framework técnico más profundo para entender comportamiento institucional. La mayoría de retail lo conoce superficial. DIONE lo aplica completo y cuantificado.
 
 ---
@@ -93,28 +95,71 @@ Lateralización entre el AR high y el ST/SC low. Puede durar semanas a meses (ac
 
 **Detección**: ratio del rango / ATR > 6, duración > 4 semanas, A/D Line slope positiva durante el rango
 
-### Fase C — The Test (DONDE ESTÁ EL ALPHA)
+### Fase C — The Test
 
-El evento más importante para entrada:
+El evento más importante para ubicar una entrada:
 
 **Spring** (también llamado "shakeout"):
 - Último intento de los bears, precio rompe por debajo del ST low
-- **Volumen seco** (típicamente < 80% del promedio 20d) — clave
 - Recovery rápido (1-5 días) por encima del support roto
 - Es la trampa final para limpiar weak hands antes del markup
 
 **Test del Spring**:
-- Retest del spring low con volumen aún más seco
-- Si holds sin nuevo lower low → entrada confirmada
+- Retest del spring low después de un rebote
+- Si holds sin nuevo lower low y la vela cierra en su mitad superior → entrada confirmada
+- Todo Spring exige test, incluido el de volumen seco
+
+**Criterio único**: el precio decide y el volumen clasifica. Ningún umbral de volumen confirma ni descarta un Spring o un Test. A/D Line y CMF tampoco los vetan.
 
 **Detector programático de Spring**:
 ```
-Spring detected if:
-  close[t] < min(low[t-60:t-1])  # rompe el ST low
-  AND volume[t] < 0.80 × avg(volume[t-20:t-1])  # volumen seco
-  AND close[t+1:t+5] > min(low[t-60:t-1])  # recovery dentro de 5 días
-  AND no new low en t+5:t+15  # sin nuevo lower low
+nivel = min(low[t-60:t-1])  # proxy del ST low
+
+Spring candidato si se cumple una de estas:
+  (A) close[t] < nivel AND existe e en t+1..t+5 con close[e] > nivel  # rompe al cierre y recupera en 5 días
+  (B) low[t] < nivel AND close[t] >= nivel, con e = t  # undercut con cierre de vuelta
+
+spring_low = min(low[t:e])
+
+Test válido en la primera vela j entre e+2 y e+20 que cumpla:
+  max(close[e:j-1]) >= spring_low × 1.05  # hubo rebote
+  AND low[j] <= spring_low × 1.05  # vuelve a la zona
+  AND min(low[e+1:j]) >= spring_low  # sin nuevo lower low
+  AND (close[j] - low[j]) / (high[j] - low[j]) >= 0.5  # cierra en su mitad superior
+
+Entrada al cierre de j.
 ```
+
+Si aparece un low por debajo de `spring_low` antes del test, el candidato queda invalidado. Después de la entrada manda el stop definido en `TECHNICAL_VALIDATED.md`.
+
+La evidencia mide la primera vela que vuelve a la zona. Si esa vela cierra en su mitad inferior, el test sigue pendiente, y aceptar una vela posterior en la zona es criterio discrecional sin medir.
+
+`nivel` es un proxy. Si el rango dura más de 60 sesiones, el ST o SC low puede quedar fuera de la ventana, así que DIONE reporta también el nivel estructural.
+
+**Clasificación por volumen** (etiqueta para el reporte, no cambia la decisión):
+
+| Tipo | V[t] / base | Lectura |
+|---|---|---|
+| Spring seco (#3) | < 0.80 | Poca oferta en la ruptura |
+| Spring moderado (#2) | 0.80 a 1.50 | Oferta flotante |
+| Shakeout (#1) | > 1.50 | Oferta alta, suele venir con penetración profunda |
+
+`base` = `avg(volume[t-20:t-1])`. Si esa ventana contiene un evento que infla el volumen (earnings, emisión de acciones, investor day, rebalanceo), usar la media de las 60 sesiones previas al primer evento. Los cortes son convención para etiquetar y no están validados. Registrar en `THESIS_LOG.md` el ratio continuo del Spring y del test.
+
+**Evidencia** (backtest propio, noviembre 2026): 60 acciones líquidas de EE. UU., enero 2011 a noviembre 2026. Exceso contra SPY a 20 sesiones; t de la diferencia agrupando por mes.
+
+| Vela evaluada | V / media 20d | n | Exceso 20d | t dif. |
+|---|---|---|---|---|
+| Spring (A) | < 0.80 / ≥ 0.80 | 95 / 1,893 | +0.19% / +0.14% | 0.7 |
+| Spring (B) | < 0.80 / ≥ 0.80 | 167 / 2,098 | -0.31% / +0.38% | -1.3 |
+| Test | < 0.80 / ≥ 0.80 | 206 / 538 | -0.34% / +0.65% | -2.7 |
+
+En un día cualquiera el exceso medio es +0.31%, y el conjunto de tests rinde +0.37%. Con volumen < 0.70 × media 20d en el test el resultado fue -1.07% (n=110). De 2,275 candidatos, 56.7% perdió su mínimo antes del test, 32.7% llegó a test y 17.2% llegó a test y aguantó 20 sesiones.
+
+Límites: sobrevivientes de gran capitalización, sin filtro de Fase B, sin fricciones, dentro de muestra y con varios cortes. Alcanza para retirar el volumen como compuerta y no prueba que el volumen alto sea mejor.
+
+Desde v4 (14-nov-2026) Wyckoff no puntúa ni prioriza scans. Esta sección sirve para leer el gráfico y ubicar el stop y la entrada límite.
+
 
 ### Fase D — Markup Beginning
 
