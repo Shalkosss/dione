@@ -282,6 +282,23 @@ DIONE adapta el composite weights dinámicamente según sector del ticker analiz
 
 ---
 
+## CHECK SECTORIAL — Infraestructura de IA / Data Centers
+
+**Aplica a**: data center REITs y desarrolladores, neoclouds, mineros con pivot a HPC/IA, y la cadena de energía y equipos (cooling, eléctrico, generación) cuando la tesis depende de nueva capacidad de data centers.
+
+**Contexto (nov 2026)**: tras las midterms del 3-nov-2026, la aprobación de data centers pasó a ser tema de ballot local en varios estados (affordability y costo de energía). La demanda no cambia (capex 2026 de los 4 hyperscalers ≥ $700B, low end de guidance), pero la oferta nueva enfrenta un filtro político adicional. Fuente: Blue Owl, "Data centers post midterms" (10-nov-2026), material de venta del gestor, leer con ese sesgo.
+
+**Checks obligatorios en `/deep`** (pedir data en 10-K/10-Q, earnings call o investor deck):
+1. **Pipeline des-riesgado**: % de MW del pipeline con energía, zoning y permisos asegurados vs. greenfield sin aprobar. Más greenfield sin aprobar = más riesgo de plazos y de ejecución.
+2. **Capacidad apta para IA**: % de la capacidad existente con alta densidad / liquid cooling. La capacidad legacy de baja densidad no hereda la prima de escasez.
+3. **Exposición a tarifas de grandes cargas**: cláusulas de "full cost of service" o tarifas especiales para grandes consumidores en los mercados donde opera; pass-through al tenant o golpe al margen.
+4. **Concentración de tenants**: % de ingresos o de leases de los top 3 clientes; plazo remanente de leases; rating del tenant. Ojo con backlog/RPO concentrado en pocos nombres.
+5. **Sensibilidad a una pausa de capex hyperscaler**: cuánto del crecimiento proyectado depende de leases nuevos aún no firmados.
+
+**Sesgo direccional [Opinión DIONE]**: favorece incumbentes con capacidad energizada y adaptable a IA, y a la cadena de energía/equipos (los plazos se alargan, la demanda no cae). Penaliza desarrolladores greenfield y neoclouds cuyo pipeline aún no tiene permisos. No es señal de entrada por sí sola; los nombres entran solo por Hunter o `/deep`.
+
+---
+
 ## REVERSE DCF (siempre incluir en Deep Research)
 
 **Concepto**: en vez de calcular un fair value, calcular qué growth rate implica el precio actual y juzgar si es razonable.

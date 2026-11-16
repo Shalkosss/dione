@@ -1,172 +1,71 @@
-# COMMANDS
+# COMMANDS — v4.1 (14-nov-2026)
 
-[CAMBIOS vs versión anterior: agregada nota inicial apuntando a
-COMMANDS_status.md para estado real (AUTO / PASTE / WEB-APP / NO EXISTE).
-El resto del archivo se mantiene como referencia conceptual de qué hace
-cada comando. NO duplica el status.]
+Reemplaza a `COMMANDS_status.md` y a la versión anterior del repo. Estados: AUTO (DIONE lo corre con los endpoints), CALC (DIONE lo calcula desde candles hasta que el backend lo traiga), BBG (mejora con data pegada de Bloomberg), WEB (vive en la app).
 
-> ⚠️ **VER [COMMANDS_status.md](COMMANDS_status.md) PARA ESTADO REAL
-> DE CADA COMANDO** (qué corre auto vía endpoints, qué requiere paste,
-> qué vive en el web app, qué todavía no existe). Este archivo describe
-> la intención y output esperado de cada comando; el status es la verdad
-> operativa.
+## Rutina
 
-Comandos slash y workflow operativo. Usar como mensaje completo.
+| Cuándo | Qué |
+|---|---|
+| Diario, 5 minutos | `/tracker` |
+| Semanal | `/macro` si tiene más de 14 días, luego `/scan` |
+| En temporada de resultados | `/scan-eventos` (papel) |
+| Por candidato | `/deep TICKER` (se registra solo) |
+| Mensual | `/performance` y `/portfolio` |
 
----
+## Descubrimiento
 
-## ANÁLISIS DE TICKERS
+| Comando | Qué hace | Estado |
+|---|---|---|
+| `/scan [sector=XLV] [cap=small] [limit=N]` | Régimen, tablero sectorial, 12 candidatos de los 11 sectores con máximo 3 por sector, tablero de megacaps, hasta 3 propuestas para `/deep` de sectores distintos | AUTO + CALC |
+| `/scan-eventos` | Reportes de los últimos 5 días con sorpresa positiva, guía al alza y precio que se sostiene. Hipótesis en prueba, solo papel | CALC (EDGAR 8-K + candles) |
+| `/scan-pullback` | Etiquetas RETROCESO y EN ZONA, máximo 3 por sector | CALC |
+| `/scan-fundamental` | Ranking por calidad para el núcleo de largo plazo | AUTO |
+| `/scan-divergence` | Calidad alta dentro de su sector con tendencia rota. Va a `SIN_ORDEN` | CALC |
+| `/megacaps` | Tablero de las ~35 empresas de más de $200B | CALC |
+| `/scan-short` | Candidatos a short, solo papel | Manual |
 
-### `/deep TICKER`
-Deep Research completo nivel institucional.
-**Output**: TL;DR → Tesis 1-3-1 → Top-down → Bull/Bear cases → Veredicto →
-Pre-mortem → Valuación → Business Quality → Setup Técnico + Wyckoff →
-Smart Money → Catalysts → Glosario.
+`/scan-combo`, `/scan-technical` y `/hidden-gems` quedan como alias de `/scan` (`/hidden-gems` equivale a `/scan cap=small`).
 
-### `/quick TICKER`
-Análisis rápido en 5 párrafos.
+## Análisis
 
-### `/bull TICKER` / `/bear TICKER`
-Solo un lado del adversarial.
+| Comando | Qué hace | Estado |
+|---|---|---|
+| `/deep TICKER` | Formato completo de `INSTRUCTIONS.md`. Termina en ORDEN con stop y registro en el log | AUTO, BBG |
+| `/quick TICKER` | Versión corta con orden y registro | AUTO |
+| `/bull TICKER`, `/bear TICKER` | Un lado del adversarial | AUTO |
+| `/valuation TICKER` | Reverse DCF, escenarios, múltiplos | AUTO, BBG |
+| `/short TICKER`, `/distribution TICKER` | Tesis bajista, solo papel | AUTO |
+| `/smart-money [TICKER]` | `/api/smart-money`. 13F y dark pool por Bloomberg | AUTO, BBG |
+| `/catalysts [TICKER]` | Calendario de 12 semanas | AUTO, BBG |
 
-### `/wyckoff TICKER`
-Análisis Wyckoff aislado.
+## Seguimiento
 
-### `/fundamental TICKER`
-Análisis fundamental aislado.
+| Comando | Qué hace | Estado |
+|---|---|---|
+| `/tracker` | Actualiza el estado de cada tesis, marca órdenes límite ejecutadas, levanta banderas de vigencia, avisa si el pool supera 40% en un sector o tema | CALC hasta la Fase 1 de la web |
+| `/log-thesis TICKER` | Registra a mano una tesis ya discutida. Normalmente no hace falta | AUTO con escritura al proyecto |
+| `/review TICKER` | Rehace el veredicto de una tesis con bandera `REVISAR` | AUTO |
+| `/performance` | Métricas de eficiencia de los deeps. Línea base: `DEEPS_BACKFILL_2026-11.md` | CALC |
+| `/portfolio` | Cuenta real contra SPY, pesos por sector contra el índice, estructura núcleo-satélite, límites | Requiere que Rodrigo pegue posiciones hasta la Fase 2 |
+| `/ai-compare` | Posiciones de portafolios de IA públicos contra las propias | Pendiente de definir la fuente |
 
-### `/valuation TICKER`
-DCF + comparables + sum-of-parts + reverse DCF.
+## Macro
 
----
+| Comando | Qué hace | Estado |
+|---|---|---|
+| `/macro` | Régimen, curva, inflación, Fed, sentimiento. Termina con 3 sectores sobreponderados y 2 infraponderados, con fecha. Esa vista define los ETFs del núcleo táctico | AUTO (web), BBG |
+| `/sector-atlas`, `/sector NOMBRE` | Mapa sectorial con fuerza relativa | CALC, BBG |
+| `/news` | Noticias que afectan a tesis activas | AUTO |
 
-## HUNTER
+## Utilidades
 
-### `/scan-fundamental [limit=N] [cap=...] [sector=...]`
-Top N rankeado por composite fundamental score.
+`/glossary`, `/explain`, `/help`, `/conclave TEMA`.
 
-### `/scan-technical [limit=N]`
-Top N con setups técnicos. Ver disclaimer Phase B en
-[HUNTER_MODES](HUNTER_MODES.md).
+## Si algo falla
 
-### `/scan-combo [limit=N]`
-Modo Combinado (Diamond + Wait + Trader). **Default recomendado.**
-
-### `/scan-divergence`
-Tickers donde fundamental y técnico están en desacuerdo significativo.
-
-### `/hidden-gems [limit=N]`
-Scan Tier-3 (small caps con gate estricto).
-
----
-
-## SHORT
-
-### `/scan-short [limit=N]`
-Hunter modo Short. Ver [SHORT_FRAMEWORK](SHORT_FRAMEWORK.md). Hoy NO
-existe `/api/screener?mode=short` — DIONE razona sobre watchlist +
-megacaps en deterioro hasta Fase 3.
-
-### `/short TICKER`
-Deep Research bajista completo.
-
-### `/distribution TICKER`
-Wyckoff distribución aislado.
-
----
-
-## MACRO + SECTORES
-
-### `/macro`
-Macro Atlas: régimen Dalio, growth/inflation, yield curve, breakevens,
-dot plot, ISM/PMI, earnings aggregate, sentiment, asset allocation
-táctica, sectores GICS OW/MW/UW, 3 themes 3-6m, top 3 risk events.
-
-### `/sector-atlas`
-Heatmap sectorial con insights no obvios.
-
-### `/sector SECTOR_NAME`
-Deep dive sectorial.
-
----
-
-## SMART MONEY + CATALYSTS
-
-### `/smart-money`
-Overview semanal: top tickers por SM score, clusters, whale moves. **Hoy
-no existe** — Fase 3. Ver [SMART_MONEY](SMART_MONEY.md).
-
-### `/smart-money TICKER`
-Análisis SM específico (insider + recs auto; 13F + dark pool por paste).
-
-### `/catalysts [TICKER]`
-Catalyst calendar próximas 12 semanas.
-
----
-
-## PORTAFOLIO + RIESGO (todo vive en web app)
-
-### `/portfolio`
-Estado actual del portafolio.
-
-### `/portfolio-input`
-Registrar/actualizar portafolio.
-
-### `/risk-check`
-Risk dashboard: vol, beta, VaR, ES, descomposición, concentración,
-correlación, número efectivo, stress tests.
-
-### `/rebalance`
-Sugerencia de rebalanceo.
-
-### `/forward-portfolio`
-Forward Portfolio.
-
----
-
-## OPERACIÓN DIARIA
-
-### `/news`
-News digest accionable para watchlist.
-
-### `/morning-brief`
-Brief operativo de la mañana.
-
-### `/log-thesis TICKER`
-Loguear tesis al thesis log.
-
-### `/performance`
-Hit rate + performance metrics del thesis log.
-
----
-
-## UTILIDADES
-
-`/glossary` · `/explain CONCEPT` · `/cheatsheet TOPIC` · `/help`
-
----
-
-## WORKFLOW DIARIO RECOMENDADO
-
-### Lunes
-1. `/macro`
-2. `/sector-atlas`
-3. `/scan-combo`
-4. `/catalysts`
-5. `/deep` 2-3 tickers
-
-### Martes-Jueves
-- `/morning-brief` diario
-- Deep Research de tickers identificados
-- Bloomberg paste
-
-### Viernes
-- `/smart-money`
-- `/news`
-- `/performance` si hay tesis cumpliendo 30/90/180d
-
-### Mensual
-- `/performance` completo
-- Revisión composite weights
-- WATCHLIST update
-- `/forward-portfolio` para rebalancing
+| Síntoma | Causa probable | Qué mirar |
+|---|---|---|
+| Scores técnicos del snapshot en `null` | Ventana 09:00-11:00 UTC o cron caído | `/api/healthz` |
+| `gicsSector` `null` | Limitación conocida (42% de los nombres) | Usar el campo `sector` |
+| Megacap ausente del snapshot | No pasa el gate o falta data | Calcular desde `/api/quote` y `/api/candles` |
+| `/api/quote` devuelve ceros | Ticker inexistente o key caída | Probar con AAPL, o usar Yahoo chart v8 directo |
