@@ -17,6 +17,7 @@ import { qualityGate, preScore } from '../../lib/scoring.js';
 import { writeSnapshot, readSnapshot, readRow, writeRow } from '../../lib/store.js';
 import { gicsFor } from '../../lib/gics.js';
 import { MEGACAPS, sectorPercentiles, rankMap, rollWeekly, weeklyMarks, carryTechnical, technicalMeta } from '../../lib/universe.js';
+import { refreshUniverse } from '../../lib/universeRefresh.js';
 
 export const config = { maxDuration: 300 };
 
@@ -27,6 +28,17 @@ export default async function handler(req, res) {
   }
 
   const t0 = Date.now();
+
+  // ?part=universe (cron 12:00 UTC, /api/cron/refresh-universe): universo
+  // completo de NYSE y Nasdaq en la fila 'universe'. No toca el snapshot.
+  if (req.query?.part === 'universe') {
+    try {
+      return res.status(200).json({ ok: true, part: 'universe', ...(await refreshUniverse({ t0 })) });
+    } catch (e) {
+      console.error('[refresh-gems] universe', e);
+      return res.status(500).json({ error: e.message, ms: Date.now() - t0 });
+    }
+  }
 
   try {
     const year = process.env.GEMS_YEAR ? Number(process.env.GEMS_YEAR) : undefined;

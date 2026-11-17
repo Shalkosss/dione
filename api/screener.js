@@ -37,9 +37,13 @@
 //   /api/sectors   → mode=sectors  tablero de los 11 ETFs sectoriales
 //   /api/regime    → mode=regime   SPY contra SMA200, VIX y amplitud
 //   megacap=1      → solo megacaps, pasen o no el gate
+//   /api/universe  → mode=universe todas las empresas comunes de NYSE y Nasdaq
+//                                   (fila 'universe', cron 12:00 UTC). Parámetros
+//                                   en lib/marketUniverse.js (queryUniverse)
 
-import { readSnapshot } from '../lib/store.js';
+import { readSnapshot, readRow } from '../lib/store.js';
 import { SCAN_MODES, buildScanResponse } from '../lib/scanApi.js';
+import { queryUniverse } from '../lib/marketUniverse.js';
 
 export const config = { maxDuration: 10 };
 
@@ -60,6 +64,16 @@ export default async function handler(req, res) {
       const perSector = Math.max(1, Math.min(num(q.perSector, 3), 10));
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
       return res.status(200).json(buildScanResponse(snap, mode, { perSector }));
+    }
+    if (mode === 'universe') {
+      let row;
+      try { row = await readRow('universe'); } catch (e) {
+        console.error('[screener] universe:', e.message);
+        return res.status(500).json({ error: 'No se pudo leer el universo' });
+      }
+      if (!row?.rows) return res.status(503).json({ error: 'El universo todavía no se generó (cron refresh-universe, 12:00 UTC)' });
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
+      return res.status(200).json({ meta: row.meta, ...queryUniverse(row.rows, q) });
     }
     const onlyMegacaps = q.megacap === '1' || q.megacap === 'true';
     const def = MODE_DEFAULTS[mode] || MODE_DEFAULTS.gems;

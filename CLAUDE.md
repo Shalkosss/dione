@@ -89,6 +89,7 @@ La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma
 | `GET /api/screener` | Filtra y rankea el snapshot precomputado. Modos `gems`, `fundamental`, `technical`, `combo`; `megacap=1` lista solo megacaps |
 | `GET /api/scan` | Rewrite a `/api/screener?mode=scan`: régimen, tablero sectorial, descubrimiento (máx. 3 por sector), megacaps y marcas semanales (`lib/scanApi.js`) |
 | `GET /api/sectors`, `GET /api/regime` | Rewrites a `mode=sectors` y `mode=regime`. Los calcula `refresh-technical` y quedan en `meta.market` |
+| `GET /api/universe` | Rewrite a `/api/screener?mode=universe`: todas las empresas comunes de NYSE y Nasdaq (~6.000, fila `universe`) con el gate como etiqueta, lista de espera y piso de $3 y $300M. Filtros en `lib/marketUniverse.js` (`queryUniverse`). Contexto, no candidatas |
 | `GET /api/smart-money` | Snapshot de insiders (Form 4 de EDGAR) y analistas (Finnhub, opcional). `?ticker=` para uno solo |
 | `GET /api/quote/[ticker]` | Cotización vía Yahoo chart v8, sin key. Finnhub solo de respaldo si hay `FINNHUB_KEY` |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
@@ -116,6 +117,7 @@ función existente.
 | 09:00 | `refresh-gems` | Universo y fundamentales desde SEC EDGAR, precio (Finnhub + Yahoo), quality gate, preScore, percentil por sector, megacaps (`lib/universe.js`) y marcas NUEVO/SUBE/BAJA contra la fila `weekly` |
 | 10:00 | `refresh-technical` | Velas de Yahoo para todos los gate-passers (más SPY y los 11 ETFs): `trendScore` v4 (`lib/trendScore.js`) y `technicalScore` v3 histórico. Corta a los 210 s; si falla más del 30% no pisa los scores previos |
 | 11:00 | `refresh-smart-money` | Insiders desde el Form 4 de EDGAR (top 100, compras y ventas en mercado abierto; corta a los 110 s), analistas por Finnhub solo con key, y barrido de resultados de las últimas 5 sesiones |
+| 12:00 | `refresh-universe` | Rewrite a `refresh-gems?part=universe` (`lib/universeRefresh.js`): lista de NYSE y Nasdaq de la SEC, fundamentales EDGAR, precios por Yahoo spark (20 por pedido) y sectores del cache. No toca el snapshot `latest` |
 | 22:00 | `refresh-theses` | Tracker: reproduce cada tesis con velas de Yahoo. Sin LLM |
 
 Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
@@ -124,7 +126,7 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 
 | Tabla | Contenido | Quién escribe |
 |---|---|---|
-| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB y fila `weekly` con el ranking de esta semana y la anterior | `refresh-gems`, `refresh-technical` |
+| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB, `weekly` con el ranking de esta semana y la anterior, `universe` con NYSE y Nasdaq completos y `events` con el barrido de resultados | `refresh-gems`, `refresh-technical`, `refresh-smart-money` |
 | `smart_money_snapshot` | Una fila `latest` | `refresh-smart-money` |
 | `symbol_metadata` | Cache de sector e industria (`001_symbol_metadata.sql`) | `lib/finnhub.js` |
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
@@ -208,9 +210,6 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    Lo mismo si solo tagea deuda corriente y no la de largo plazo (`debtPartial`):
    casi siempre significa que la de largo plazo está bajo un tag que no leemos.
    Si falta solo la corriente, se toma como cero (lo normal es que no tenga).
-8. **Diversidad del pool** (17-nov-2026): máximo 40% de las tesis vivas en un
-   mismo sector o tema (`poolDiversity` en `lib/thesisStats.js`, campo opcional
-   `theme` del bloque). Se evalúa desde 3 tesis vivas. Solo avisa, no bloquea.
 7. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
    módulos numerados, cinta de precios y barra de estado; negro con acento
    azul, esquinas rectas, tema claro opcional. Los colores son variables CSS en `src/index.css`;
@@ -218,6 +217,16 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    que no se les puede concatenar transparencia: usar `C.accentSoft` y
    similares. Inter para texto, JetBrains Mono para datos y rótulos. Armazón en
    `Layout` y `components/shell/`; piezas comunes en `components/ui.jsx`. No cambiar la identidad visual sin pedirlo.
+8. **Diversidad del pool** (17-nov-2026): máximo 40% de las tesis vivas en un
+   mismo sector o tema (`poolDiversity` en `lib/thesisStats.js`, campo opcional
+   `theme` del bloque). Se evalúa desde 3 tesis vivas. Solo avisa, no bloquea.
+9. **Universo NYSE y Nasdaq** (17-nov-2026): vive aparte del scan (fila
+   `universe`, vista "Mercado completo" del Scan). El gate ahí es una etiqueta;
+   `/api/scan` y la vista de calidad no cambian. Una fila por CIK, sin
+   preferentes, warrants ni fondos. Si el frame anual de EDGAR no trae a una
+   empresa (pasó con Broadcom y Ford), se usan los datos del año anterior con
+   `staleFundamentals: true`, también en el gate del scan. Las extranjeras con
+   IFRS (ASML, SAP) no tienen fundamentales en EDGAR y figuran sin gate.
 
 ---
 
@@ -243,6 +252,7 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Earnings no cubre emisores extranjeros (6-K), como NU.
 - Gate de deuda: si solo falta la deuda corriente se toma como cero; una empresa que la tenga bajo un tag no leído sale con D/E algo subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
+- Universo paso 2: técnico de las que no pasan el gate en tandas propias (filas separadas, horas distintas), percentil contra el universo de calidad y amplitud del régimen sobre el mercado completo.
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
 - Regla 8 del tracker (bandera de sector): `/api/sectors` ya existe, pero la lista de sobreponderados de `/macro` no llega a la web.
 - Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 (drift post-earnings) está hecho: en el S&P 500 no hay señal explotable (`project-docs/PEAD_2026-11.md`), así que `/api/events` es contexto y no ranking.

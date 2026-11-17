@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, panel, btn, th, td, input } from "../theme.js";
 import { Link } from "react-router-dom";
 import { Panel } from "../components/Panel.jsx";
+import { Segmented } from "../components/ui.jsx";
+import UniverseView from "../components/scan/UniverseView.jsx";
 
 const TREND_TONE = { "EN ZONA": C.pos, ALCISTA: C.pos, EXTENDIDA: C.amber, RETROCESO: C.amber, RECUPERANDO: C.accent, ROTA: C.neg };
 
@@ -72,7 +74,25 @@ const MARK_TONE = { NUEVO: C.accent, SUBE: C.pos, BAJA: C.neg };
 
 // ---- página principal ----
 
+// Dos vistas: Calidad (el scan del método, gate como puerta) y Mercado completo
+// (NYSE + Nasdaq con el gate como etiqueta; contexto, no candidatas).
 export default function HiddenGems() {
+  const [view, setView] = useState("calidad");
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[{ key: "calidad", label: "Calidad (gate)" }, { key: "mercado", label: "Mercado completo" }]}
+        />
+      </div>
+      {view === "calidad" ? <QualityView /> : <UniverseView />}
+    </div>
+  );
+}
+
+function QualityView() {
   const [data, setData] = useState(null); // { meta, results }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

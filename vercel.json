@@ -13,6 +13,14 @@
       "destination": "/api/screener?mode=regime"
     },
     {
+      "source": "/api/cron/refresh-universe",
+      "destination": "/api/cron/refresh-gems?part=universe"
+    },
+    {
+      "source": "/api/universe",
+      "destination": "/api/screener?mode=universe"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
@@ -29,6 +37,10 @@
     {
       "path": "/api/cron/refresh-smart-money",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-universe",
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/cron/refresh-theses",
