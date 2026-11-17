@@ -1,7 +1,8 @@
 import React, { useMemo } from "react";
 import { C, mono } from "../../theme.js";
 import { Panel } from "../Panel.jsx";
-import { sectorExposure, activeWeights, SPY_WEIGHTS_AS_OF } from "../../lib/sectors.js";
+import { sectorExposure, activeWeights } from "../../lib/sectors.js";
+import { useSpyWeights } from "../../lib/useSpyWeights.js";
 
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 
@@ -9,16 +10,17 @@ const pct = (v) => `${(v * 100).toFixed(1)}%`;
 // sectores. La barra central muestra la apuesta activa: a la derecha
 // sobreponderado, a la izquierda subponderado.
 export default function SectorTilt({ valued }) {
+  const spy = useSpyWeights();
   const rows = useMemo(() => {
     const cashWeight = valued.total > 0 ? valued.cash / valued.total : 1;
-    return activeWeights(sectorExposure(valued.rows, cashWeight)).sort((a, b) => b.active - a.active);
-  }, [valued]);
+    return activeWeights(sectorExposure(valued.rows, cashWeight, spy.bench), spy.bench).sort((a, b) => b.active - a.active);
+  }, [valued, spy]);
 
   const maxWeight = Math.max(0.01, ...rows.map((r) => Math.max(r.port, r.bench)));
   const maxActive = Math.max(0.01, ...rows.map((r) => Math.abs(r.active)));
 
   return (
-    <Panel title="Sectores contra el S&P 500" right={`pesos del índice: ${SPY_WEIGHTS_AS_OF}`}>
+    <Panel title="Sectores contra el S&P 500" right={`pesos del índice: ${spy.label}`}>
       <div style={{ display: "grid", gridTemplateColumns: "96px minmax(0,1fr) minmax(0,1fr) 58px", gap: "0 10px", alignItems: "center", fontFamily: mono, fontSize: 10.5 }}>
         <span style={{ color: C.muted, letterSpacing: "0.08em" }}>SECTOR</span>
         <span style={{ color: C.muted, letterSpacing: "0.08em" }}><span style={{ color: C.accent }}>■</span> CARTERA <span style={{ color: C.spy, marginLeft: 6 }}>■</span> S&P 500</span>
@@ -50,7 +52,10 @@ export default function SectorTilt({ valued }) {
         ))}
       </div>
       <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
-        VOO, SPY, IVV, VTI y QQQ se reparten entre sus sectores. Los pesos del índice son aproximados y se cargan a mano.
+        VOO, SPY, IVV, VTI y QQQ se reparten entre sus sectores.{" "}
+        {spy.live
+          ? "Los pesos del índice salen de la ficha diaria de SPY en SSGA."
+          : "Los pesos del índice son los de respaldo: el dato diario solo llega en Vercel, después del cron de las 10:00 UTC."}
       </div>
     </Panel>
   );

@@ -10,13 +10,30 @@ export const GICS = [
 export const OTHER = "Otros";
 export const CASH = "Liquidez";
 
-// Pesos sectoriales APROXIMADOS del S&P 500. No salen de una fuente en vivo:
-// son una referencia cargada a mano y hay que actualizarla (roadmap, Fase 2.3).
-export const SPY_WEIGHTS_AS_OF = "aprox. 2025";
+// Pesos sectoriales del S&P 500 de respaldo (SSGA, 16-nov-2026). Los vigentes
+// llegan cada día por /api/sectors (cron refresh-technical, lib/spyWeights.js);
+// estos solo se usan si ese dato no está (desarrollo local o cron caído).
+export const SPY_WEIGHTS_AS_OF = "16-nov-2026 (respaldo)";
 export const SPY_WEIGHTS = {
-  Technology: 0.32, Financials: 0.14, "Cons. Disc.": 0.105, Communication: 0.095, Healthcare: 0.10,
-  Industrials: 0.085, "Cons. Staples": 0.055, Energy: 0.03, Utilities: 0.025, "Real Estate": 0.022, Materials: 0.023,
+  Technology: 0.353, Financials: 0.1279, "Cons. Disc.": 0.0951, Communication: 0.0886, Healthcare: 0.1063,
+  Industrials: 0.0822, "Cons. Staples": 0.0529, Energy: 0.0362, Utilities: 0.0216, "Real Estate": 0.0188, Materials: 0.0175,
 };
+
+// Nombres GICS oficiales → nombres cortos de esta pantalla.
+const SHORT_NAME = {
+  "Information Technology": "Technology", Financials: "Financials", "Health Care": "Healthcare",
+  "Consumer Discretionary": "Cons. Disc.", "Communication Services": "Communication", Industrials: "Industrials",
+  "Consumer Staples": "Cons. Staples", Energy: "Energy", Utilities: "Utilities", "Real Estate": "Real Estate", Materials: "Materials",
+};
+
+// Pesos de /api/sectors ({ weights: { "Information Technology": 0.35, ... } })
+// a nombres cortos. Devuelve null si no están los 11 sectores.
+export function benchFromGics(spyWeights) {
+  const entries = Object.entries(spyWeights?.weights || {})
+    .filter(([name, w]) => SHORT_NAME[name] && Number.isFinite(w))
+    .map(([name, w]) => [SHORT_NAME[name], w]);
+  return entries.length === GICS.length ? Object.fromEntries(entries) : null;
+}
 
 // Composición aproximada del Nasdaq 100 para abrir QQQ.
 const QQQ_WEIGHTS = {
@@ -24,7 +41,8 @@ const QQQ_WEIGHTS = {
   Industrials: 0.05, Utilities: 0.015, Materials: 0.015, Energy: 0.005, Financials: 0.005, "Real Estate": 0.01,
 };
 
-const BROAD_ETFS = { SPY: SPY_WEIGHTS, VOO: SPY_WEIGHTS, IVV: SPY_WEIGHTS, VTI: SPY_WEIGHTS, QQQ: QQQ_WEIGHTS };
+const SP500_ETFS = ["SPY", "VOO", "IVV", "VTI"];
+const isBroad = (ticker) => SP500_ETFS.includes(ticker) || ticker === "QQQ";
 
 export const SECTOR_ETFS = {
   XLK: "Technology", XLF: "Financials", XLV: "Healthcare", XLY: "Cons. Disc.", XLC: "Communication",
@@ -38,35 +56,36 @@ const OTHER_CORE = ["VT", "VXUS", "VWO", "VEA", "IWM"];
 // Tramo del mandato al que pertenece un ticker.
 export function sleeveOf(ticker) {
   if (CASH_LIKE.includes(ticker)) return "LIQUIDEZ";
-  if (BROAD_ETFS[ticker] || OTHER_CORE.includes(ticker)) return "NUCLEO";
+  if (isBroad(ticker) || OTHER_CORE.includes(ticker)) return "NUCLEO";
   if (SECTOR_ETFS[ticker]) return "TACTICO";
   return "SATELITE";
 }
 
-// Reparte el peso de una posición entre sectores.
-function spread(ticker, sector) {
+// Reparte el peso de una posición entre sectores. `bench`: pesos del S&P 500.
+function spread(ticker, sector, bench) {
   if (CASH_LIKE.includes(ticker)) return { [CASH]: 1 };
-  if (BROAD_ETFS[ticker]) return BROAD_ETFS[ticker];
+  if (SP500_ETFS.includes(ticker)) return bench;
+  if (ticker === "QQQ") return QQQ_WEIGHTS;
   if (SECTOR_ETFS[ticker]) return { [SECTOR_ETFS[ticker]]: 1 };
   return { [GICS.includes(sector) ? sector : OTHER]: 1 };
 }
 
 // Exposición por sector de la cartera completa. `rows`: [{ ticker, weight, sector }].
-export function sectorExposure(rows, cashWeight = 0) {
+export function sectorExposure(rows, cashWeight = 0, bench = SPY_WEIGHTS) {
   const base = cashWeight > 0 ? { [CASH]: cashWeight } : {};
   return rows.reduce((acc, row) => {
-    const parts = spread(row.ticker, row.sector);
+    const parts = spread(row.ticker, row.sector, bench);
     return Object.entries(parts).reduce((a, [sector, share]) => ({ ...a, [sector]: (a[sector] || 0) + row.weight * share }), acc);
   }, base);
 }
 
 // Peso de la cartera, peso del S&P 500 y diferencia activa, por sector.
-export function activeWeights(exposure) {
+export function activeWeights(exposure, bench = SPY_WEIGHTS) {
   const sectors = [...GICS, ...Object.keys(exposure).filter((s) => !GICS.includes(s))];
   return sectors.map((sector) => {
     const port = exposure[sector] || 0;
-    const bench = SPY_WEIGHTS[sector] || 0;
-    return { sector, port, bench, active: port - bench };
+    const b = bench[sector] || 0;
+    return { sector, port, bench: b, active: port - b };
   });
 }
 
@@ -91,7 +110,7 @@ export function sleeveWeights(rows, cashWeight = 0) {
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
 
 // Lista de incumplimientos del mandato: [{ level: 'alerta' | 'aviso', text }].
-export function mandateChecks(rows, cashWeight, account = "real") {
+export function mandateChecks(rows, cashWeight, account = "real", bench = SPY_WEIGHTS) {
   if (!rows.length) return [];
   const sleeves = sleeveWeights(rows, cashWeight);
   const sleeveAlerts = Object.entries(SLEEVE_RANGES).flatMap(([key, range]) => {
@@ -104,7 +123,7 @@ export function mandateChecks(rows, cashWeight, account = "real") {
   const stockAlerts = rows
     .filter((r) => sleeveOf(r.ticker) === "SATELITE" && r.weight > maxStock + 0.005)
     .map((r) => ({ level: "alerta", text: `${r.ticker} pesa ${pct(r.weight)}: el máximo por acción es ${pct(maxStock)}` }));
-  const exposure = sectorExposure(rows, cashWeight);
+  const exposure = sectorExposure(rows, cashWeight, bench);
   const sectorAlerts = GICS.filter((s) => (exposure[s] || 0) > MAX_SECTOR + 0.005)
     .map((s) => ({ level: "alerta", text: `${s} en ${pct(exposure[s])}: el máximo por sector es ${pct(MAX_SECTOR)}` }));
   return [...sleeveAlerts, ...stockAlerts, ...sectorAlerts];

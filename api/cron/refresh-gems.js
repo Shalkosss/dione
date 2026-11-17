@@ -48,6 +48,7 @@ export default async function handler(req, res) {
     const passers = [];
     let nullDebt = 0;
     let untaggedDebtPassers = 0;
+    let partialDebtPassers = 0;
     for (const [cik, raw] of edgar.facts) {
       const ticker = cikToTicker.get(cik);
       if (!ticker) continue;
@@ -56,6 +57,7 @@ export default async function handler(req, res) {
       if (qualityGate(f0).pass) {
         passers.push({ ticker, cik, raw, megacap: MEGACAPS.includes(ticker) });
         if (f0.debtUntagged) untaggedDebtPassers++;
+        if (f0.debtPartial) partialDebtPassers++;
       }
     }
 
@@ -163,6 +165,7 @@ export default async function handler(req, res) {
         secCoverage: edgar.coverage,
         gatePassers: passers.filter((p) => !p.outsideGate).length,
         untaggedDebtPassers,
+        partialDebtPassers,
         megacaps: passers.filter((p) => p.megacap).length,
         megacapsMissing,
         weekOf: weekly?.current.weekOf ?? null,

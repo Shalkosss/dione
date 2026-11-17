@@ -108,6 +108,25 @@ describe("gate con deuda sin tag", () => {
     const f = computeMetrics("X", { ...base, liab: 50, ltd: 30, std: 0 });
     expect(f.debtToEquity).toBeCloseTo(0.3);
     expect(f.debtUntagged).toBe(false);
+    expect(f.debtPartial).toBe(false);
+  });
+
+  it("solo deuda corriente tageada: manda el techo, no la parte que se ve", () => {
+    const ok = computeMetrics("X", { ...base, liab: 50, std: 5 });
+    expect(ok.debtPartial).toBe(true);
+    expect(ok.debtToEquity).toBeCloseTo(0.05);
+    expect(qualityGate(ok).pass).toBe(true);
+    const bad = computeMetrics("X", { ...base, assets: 400, liab: 300, std: 5 });
+    expect(bad.debtPartial).toBe(true);
+    expect(qualityGate(bad).pass).toBe(false);
+    expect(qualityGate(bad).reasons.join()).toMatch(/largo plazo/);
+  });
+
+  it("solo deuda de largo plazo tageada: la corriente se toma como cero", () => {
+    const f = computeMetrics("X", { ...base, assets: 400, liab: 300, ltd: 50 });
+    expect(f.debtPartial).toBe(false);
+    expect(f.debtToEquity).toBeCloseTo(0.5);
+    expect(qualityGate(f).pass).toBe(true);
   });
 });
 

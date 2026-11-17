@@ -14,6 +14,7 @@
 import { readSnapshot, writeSnapshot } from '../../lib/store.js';
 import { fetchCandlesBatch } from '../../lib/yahoo.js';
 import { buildTechnicalUpdates, BENCHMARKS, marketSummary } from '../../lib/trendRefresh.js';
+import { fetchSpyWeights } from '../../lib/spyWeights.js';
 
 export const config = { maxDuration: 300 };
 
@@ -42,6 +43,9 @@ export default async function handler(req, res) {
     const top = MAX_SYMBOLS > 0 ? sorted.slice(0, MAX_SYMBOLS) : sorted;
     const passers = [...top, ...sorted.filter((g) => g.megacap && !top.includes(g))];
 
+    // Pesos sectoriales del S&P 500 (SSGA) en paralelo con las velas.
+    const spyWeightsP = fetchSpyWeights();
+
     // Benchmarks primero: sin ellos no hay fuerza relativa.
     const symbols = [...new Set([...BENCHMARKS, '^VIX', ...passers.map((p) => p.symbol)])];
     const candlesMap = await fetchCandlesBatch(symbols, {
@@ -68,7 +72,13 @@ export default async function handler(req, res) {
       trendUniverseSize: stats.universeSize,
       breadthAboveSma200: stats.breadthAboveSma200,
       // Régimen y tablero sectorial para /api/regime, /api/sectors y /api/scan.
-      market: { ...marketSummary(candlesMap), breadthUniverse: stats.breadthAboveSma200, asOf: now },
+      // Si SSGA no respondió, se conservan los pesos de la corrida anterior.
+      market: {
+        ...marketSummary(candlesMap),
+        breadthUniverse: stats.breadthAboveSma200,
+        asOf: now,
+        spyWeights: (await spyWeightsP) ?? snap.meta?.market?.spyWeights ?? null,
+      },
     };
 
     await writeSnapshot({ ...snap, gems, meta });

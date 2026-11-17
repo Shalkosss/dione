@@ -6,6 +6,7 @@ import ThesisTable from "../components/thesis/ThesisTable.jsx";
 import ThesisDetail from "../components/thesis/ThesisDetail.jsx";
 import EfficiencyPanel from "../components/thesis/EfficiencyPanel.jsx";
 import ImportPanel from "../components/thesis/ImportPanel.jsx";
+import PoolDiversity from "../components/thesis/PoolDiversity.jsx";
 import { fetchTheses, fetchThesisStats } from "../lib/thesisApi.js";
 import { toRow, exportMarkdown, LIVE_STATUSES } from "../lib/thesisView.js";
 
@@ -105,6 +106,8 @@ export default function Thesis() {
       )}
 
       {importOpen && <ImportPanel onImported={load} />}
+
+      {stats?.diversity?.live > 0 && <div style={{ marginBottom: 16 }}><PoolDiversity diversity={stats.diversity} /></div>}
 
       {selectedId && <ThesisDetail key={`${selectedId}-${version}`} id={selectedId} onChanged={load} />}
 

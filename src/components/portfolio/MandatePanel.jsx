@@ -1,7 +1,10 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { C, mono } from "../../theme.js";
 import { Panel } from "../Panel.jsx";
 import { SLEEVE_RANGES, sleeveWeights, mandateChecks } from "../../lib/sectors.js";
+import { useSpyWeights } from "../../lib/useSpyWeights.js";
+import { fetchThesisStats } from "../../lib/thesisApi.js";
+import PoolDiversity from "../thesis/PoolDiversity.jsx";
 
 const SCALE = 0.7; // el eje de las barras llega a 70% de la cuenta
 
@@ -10,7 +13,15 @@ const SCALE = 0.7; // el eje de las barras llega a 70% de la cuenta
 export default function MandatePanel({ valued, accountId }) {
   const cashWeight = valued.total > 0 ? valued.cash / valued.total : 1;
   const sleeves = useMemo(() => sleeveWeights(valued.rows, cashWeight), [valued, cashWeight]);
-  const alerts = useMemo(() => mandateChecks(valued.rows, cashWeight, accountId), [valued, cashWeight, accountId]);
+  const { bench } = useSpyWeights();
+  // Regla del pool de tesis (40% por sector o tema). Si el log no responde, no se muestra.
+  const [diversity, setDiversity] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetchThesisStats().then((s) => { if (alive) setDiversity(s?.diversity ?? null); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const alerts = useMemo(() => mandateChecks(valued.rows, cashWeight, accountId, bench), [valued, cashWeight, accountId, bench]);
 
   return (
     <Panel title="Mandato · núcleo y satélite" right={alerts.length ? `${alerts.length} fuera de rango` : "dentro de rango"}>
@@ -45,6 +56,7 @@ export default function MandatePanel({ valued, accountId }) {
           ))}
         </ul>
       )}
+      <PoolDiversity diversity={diversity} compact />
       {!valued.rows.length && <div style={{ fontSize: 11.5, color: C.muted, marginTop: 10 }}>Con la cuenta en caja no hay nada que controlar todavía.</div>}
     </Panel>
   );

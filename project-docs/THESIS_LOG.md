@@ -81,6 +81,7 @@ Los valores del ejemplo son ilustrativos y no constituyen una tesis vigente. Not
 
 - `entry` es el precio de la orden. En MARKET coincide con `ref_price`. En `SIN_ORDEN` va el precio al que DIONE entraría si cambiara de opinión, o `null`.
 - `ref_price` y `spy_ref` son los cierres del día de emisión y permiten calcular el alfa aunque la orden nunca se ejecute.
+- `theme` es opcional: texto o lista con el tema que cruza sectores (por ejemplo `"IA y data centers"`). La web lo usa, junto con `sector`, para la regla de diversidad del pool (no más del 40% de las tesis vivas en un mismo sector o tema).
 - `conviction` de 1 a 5. Los campos `ticker`, `entry`, `stop`, `target_3m`, `target_12m`, `conviction`, `invalidation`, `thesis_text`, `er_*` ya los lee el parser de la web.
 
 **Persistencia**: en una sesión con acceso de escritura al proyecto, DIONE agrega la entrada a este archivo al terminar el `/deep`, sin que se lo pidan, y lo dice en una línea. En una sesión sin ese acceso, entrega el bloque JSON para importarlo en la página Thesis de la web. Cuando exista la tabla `theses` con su cron (ver `ROADMAP_CLAUDE_CODE.md`), la web pasa a ser la fuente y este archivo queda como espejo legible.
