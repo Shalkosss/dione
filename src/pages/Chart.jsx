@@ -13,6 +13,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, Legend,
 } from "recharts";
+import { useSearchParams } from "react-router-dom";
 import { C, mono, panel, btn, input } from "../theme.js";
 import { Panel } from "../components/Panel.jsx";
 import { sma, rsi, bollinger, obv } from "../lib/indicators.js";
@@ -108,13 +109,16 @@ export default function Chart() {
   const [showBoll, setShowBoll] = useState(false);
   const [showOBV, setShowOBV] = useState(false);
 
-  // Carga ticker inicial desde localStorage.
+  // Ticker inicial: el de la URL (?t=NVDA, lo usa la paleta Ctrl+K) o, si no
+  // hay, el último visto guardado en localStorage.
+  const [searchParams] = useSearchParams();
+  const urlTicker = (searchParams.get("t") || "").toUpperCase().trim();
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    const initial = saved || "AAPL";
+    const initial = urlTicker || saved || "AAPL";
     setTickerInput(initial);
     setTicker(initial);
-  }, []);
+  }, [urlTicker]);
 
   // Cada vez que cambia ticker o range, refetch.
   useEffect(() => {
@@ -306,7 +310,7 @@ export default function Chart() {
 
               <Line type="monotone" dataKey="close" stroke={C.accent} strokeWidth={1.6} dot={false} name="Close" isAnimationActive={false} />
               <Line type="monotone" dataKey="sma50" stroke={C.blue} strokeWidth={1} dot={false} name="SMA 50" isAnimationActive={false} />
-              <Line type="monotone" dataKey="sma200" stroke="#a78bfa" strokeWidth={1} dot={false} name="SMA 200" isAnimationActive={false} />
+              <Line type="monotone" dataKey="sma200" stroke={C.amber} strokeWidth={1} dot={false} name="SMA 200" isAnimationActive={false} />
 
               {/* Niveles de soporte/breakout de últimos eventos clave */}
               {showWyckoff && lastSpring && (

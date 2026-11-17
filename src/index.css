@@ -1,4 +1,55 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+/* ---------- Tokens: terminal oscura (por defecto) ---------- */
+:root {
+  --bg: #040506;
+  --panel: #090b0e;
+  --panel-2: #0f1317;
+  --border: #1a2027;
+  --border-strong: #2a323c;
+  --text: #d9dee5;
+  --muted: #6c7785;
+  --accent: #3b9dff;
+  --pos: #2fd47a;
+  --neg: #ff4d5e;
+  --blue: #22d3ee;
+  --amber: #ffb020;
+  --bench-spy: #9aa4b2;
+  --accent-soft: rgba(59, 157, 255, 0.13);
+  --blue-soft: rgba(34, 211, 238, 0.11);
+  --pos-soft: rgba(47, 212, 122, 0.12);
+  --neg-soft: rgba(255, 77, 94, 0.12);
+  --amber-soft: rgba(255, 176, 32, 0.12);
+  --row-hover: rgba(59, 157, 255, 0.07);
+  --shadow: none;
+  --grid: rgba(255, 255, 255, 0.022);
+  color-scheme: dark;
+}
+
+/* ---------- Tema claro (papel) ---------- */
+:root[data-theme="light"] {
+  --bg: #eceef1;
+  --panel: #ffffff;
+  --panel-2: #f3f5f7;
+  --border: #d6dae0;
+  --border-strong: #b9c0c9;
+  --text: #11151a;
+  --muted: #5d6673;
+  --accent: #0b63ce;
+  --pos: #0a8a4d;
+  --neg: #cf2237;
+  --blue: #0784a0;
+  --amber: #a86400;
+  --bench-spy: #5d6673;
+  --accent-soft: rgba(11, 99, 206, 0.1);
+  --blue-soft: rgba(7, 132, 160, 0.1);
+  --pos-soft: rgba(10, 138, 77, 0.1);
+  --neg-soft: rgba(207, 34, 55, 0.09);
+  --amber-soft: rgba(168, 100, 0, 0.1);
+  --row-hover: rgba(11, 99, 206, 0.05);
+  --grid: rgba(0, 0, 0, 0.03);
+  color-scheme: light;
+}
 
 * {
   box-sizing: border-box;
@@ -12,22 +63,15 @@ body,
 }
 
 body {
-  background: #0d0e11;
-  color: #dfe1e6;
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace,
-    Menlo, monospace;
-  font-size: 13px;
+  background-color: var(--bg);
+  /* Retícula tenue de fondo, como papel milimetrado. */
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  font-size: 12.5px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
-}
-
-input[type="number"]::-webkit-inner-spin-button {
-  opacity: 0.25;
-}
-
-input:focus,
-select:focus {
-  outline: 1px solid #f4b740;
 }
 
 a {
@@ -35,18 +79,276 @@ a {
   text-decoration: none;
 }
 
-.dione-hover:hover {
-  filter: brightness(1.18);
+::selection {
+  background: var(--accent-soft);
 }
 
+/* ---------- Controles ---------- */
+button,
+select,
+input,
+textarea {
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, background-color 0.12s ease;
+}
+
+button:not(:disabled):hover {
+  border-color: var(--accent) !important;
+  filter: brightness(1.15);
+}
+
+button:not(:disabled):active {
+  filter: brightness(0.92);
+}
+
+button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.45;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.25;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.dione-hover:hover {
+  filter: brightness(1.14);
+}
+
+/* ---------- Tablas ---------- */
+tbody tr {
+  transition: background-color 0.1s ease;
+}
+
+tbody tr:hover {
+  background-color: var(--row-hover) !important;
+}
+
+/* ---------- Paneles ---------- */
+.dione-panel:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* ---------- Animaciones ---------- */
+@keyframes dione-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dione-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes dione-tape {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.dione-page {
+  animation: dione-rise 0.22s ease-out both;
+}
+
+.dione-pop {
+  animation: dione-rise 0.12s ease-out both;
+}
+
+.dione-live-dot {
+  animation: dione-blink 1.6s steps(1) infinite;
+}
+
+/* ---------- Armazón de terminal ---------- */
+.dione-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border-right: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dione-tab:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.dione-tab[aria-current="page"] {
+  color: var(--text);
+  background: var(--panel-2);
+  border-bottom-color: var(--accent);
+}
+
+.dione-tab-key {
+  font-size: 10px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
+.dione-tab[aria-current="page"] .dione-tab-key {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dione-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--muted);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dione-chip[data-active="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.dione-kbd {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
+.dione-tape-track {
+  display: inline-flex;
+  gap: 28px;
+  padding-right: 28px;
+  white-space: nowrap;
+  animation: dione-tape 70s linear infinite;
+}
+
+.dione-tape:hover .dione-tape-track {
+  animation-play-state: paused;
+}
+
+.dione-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.dione-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- Gráficos (Recharts) ---------- */
+.recharts-cartesian-grid line {
+  stroke: var(--border);
+}
+
+.recharts-default-tooltip {
+  border-radius: 2px !important;
+}
+
+/* ---------- Barras de scroll ---------- */
 ::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d0e11;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #262a33;
-  border-radius: 5px;
+  background: var(--border-strong);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* ---------- Grillas de página ---------- */
+.dione-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dione-grid-half {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1050px) {
+  .dione-grid-2,
+  .dione-grid-half {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .dione-hide-narrow {
+    display: none !important;
+  }
+  .dione-content {
+    padding: 10px 10px 40px !important;
+  }
+  .dione-content [style*="grid-template-columns: 1fr 1fr"],
+  .dione-content [style*="1.3fr"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

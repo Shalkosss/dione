@@ -45,8 +45,8 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 |---|---|
 | `src/pages/` | Páginas React (una por ruta) |
 | `src/components/` | UI reutilizable (`Panel`, `Layout`, `thesis/`) |
-| `src/lib/` | Lógica del cliente: `finance.js` (motor cuantitativo), `marketData.js`, `thesisApi.js`, `thesisView.js` |
-| `src/store/` | `PortfolioContext.jsx`: estado del portafolio en localStorage |
+| `src/lib/` | Lógica del cliente: `ledger.js` (libro de órdenes), `perf.js` (métricas), `sectors.js` (sectores y mandato), `marketBoard.js`, `priceHistory.js`, `thesisApi.js`, `thesisView.js` |
+| `src/store/` | `LedgerContext.jsx`: cuentas, órdenes y carteras de referencia en localStorage |
 | `api/` | Funciones serverless (endpoints y crons) |
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
 | `migrations/` | SQL para pegar en el editor de Supabase, numerado |
@@ -55,17 +55,29 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `project-docs/` | Documentos del método DIONE v4.1 |
 | `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`) |
 
-## PÁGINAS
+## PÁGINAS (módulos de la terminal)
 
-| Ruta | Página | Estado |
+La web se reorganizó el 16-nov-2026 alrededor del roadmap. Optimizer, Risk,
+Watchlist y el Screener de navegador se retiraron: no figuran en ninguna fase.
+
+| Ruta | Página | Qué hace |
 |---|---|---|
-| `/` | `Optimizer.jsx` | Markowitz + Black-Litterman, frontera eficiente, rebalanceo, mandato |
-| `/risk` | `Risk.jsx` | VaR, Expected Shortfall, stress tests, descomposición de riesgo |
-| `/chart` | `Chart.jsx` | Gráfico de precio con indicadores y Wyckoff |
-| `/watchlist` | `Watchlist.jsx` | Precios automáticos, vol y beta históricas |
+| `/` | `Portfolio.jsx` | Cartera ficticia contra benchmarks: curva base 100, rentabilidad por plazo, sectores contra S&P 500, mandato, boleta de orden y libro de órdenes |
+| `/performance` | `Performance.jsx` | Alfa, beta, information ratio, tracking error, Sharpe, Sortino, máxima caída, captura, retornos mensuales |
+| `/market` | `Market.jsx` | Régimen (SPY contra SMA200, VIX, amplitud) y tablero de los 11 sectores |
+| `/scan` | `HiddenGems.jsx` | Lee el snapshot de `/api/screener`. Solo funciona en Vercel |
+| `/earnings` | `Earnings.jsx` | Fechas de resultados (EDGAR) y reacción del precio |
 | `/thesis` | `Thesis.jsx` | Tracker de tesis (ver abajo) |
-| `/screener` | `Screener.jsx` | Screener en el navegador sobre el universo curado |
-| `/hidden-gems` | `HiddenGems.jsx` | Lee el snapshot de `/api/screener` |
+| `/chart` | `Chart.jsx` | Precio con indicadores y Wyckoff. Acepta `?t=TICKER` |
+
+Navegación: Alt+1…7 cambia de módulo; Ctrl+K enfoca la línea de comandos, que
+acepta un módulo, un ticker (`nvda`) o una orden rápida (`buy nu 100`).
+
+**Portafolio ficticio**: dos cuentas (paper USD 1.000.000 y real USD 5.000),
+cada una con su libro de órdenes. Vive en localStorage (`dione:ledger:v1`),
+igual que las carteras de referencia (Claude, Grok u otras), que se cargan a
+mano porque no hay fuente automática. Pasarlo a una tabla `transactions` de
+Supabase sigue pendiente (Fase 2.1).
 
 ## ENDPOINTS
 
@@ -75,7 +87,8 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `GET /api/smart-money` | Snapshot de insiders y analistas. `?ticker=` para uno solo |
 | `GET /api/quote/[ticker]` | Cotización vía Finnhub (usa `FINNHUB_KEY`) |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
-| `GET /api/health`, `GET /api/healthz` | Frescura del snapshot |
+| `GET /api/healthz` | Frescura del snapshot |
+| `GET /api/events?tickers=` | Últimos 8-K con ítem 2.02 de SEC EDGAR por ticker (máx. 25). Sin key |
 | `GET /api/theses` | Lista de tesis. `?status=ARMADA,ABIERTA` |
 | `POST /api/theses` | Importa bloques `dione-thesis-v2`. Exige `THESES_TOKEN` |
 | `GET /api/theses/[id]` | Una tesis con sus marcas diarias |
@@ -84,8 +97,9 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 Los endpoints de tesis responden `{ success, data, error?, meta? }`.
 
 **Límite a tener presente**: el plan Hobby de Vercel admite 12 funciones por
-deploy y el repo ya usa las 12. Antes de crear un archivo nuevo en `api/`,
-ver si cabe en una función existente.
+deploy y el repo ya usa las 12 (`/api/health` se borró para dar lugar a
+`/api/events`). Antes de crear un archivo nuevo en `api/`, ver si cabe en una
+función existente.
 
 ## CRONS (`vercel.json`, hora UTC)
 
@@ -157,21 +171,27 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 
 ## DECISIONES DE DISEÑO YA TOMADAS (no revertir sin discutir)
 
-1. **Modelo de covarianza single-index** en el Optimizer: la diagonal es la
-   varianza total; fuera de diagonal, beta_i·beta_j·var_mercado.
-2. **Optimización long-only** por Monte Carlo + hill-climbing. No hay solver
-   de QP, a propósito.
-3. **Black-Litterman**: el prior es el equilibrio implícito en los pesos
-   actuales del usuario. Los views salen del E[R] de cada activo, ponderados
-   por confianza.
-4. **Reglas de inversión**: manda `project-docs/MANDATE.md` (núcleo-satélite,
-   tamaño por presupuesto de riesgo). El Optimizer todavía tiene los límites
-   viejos hardcodeados; se alinea en la Fase 2.
+1. **Toda la medición va contra el S&P 500** con retorno ponderado por tiempo
+   (`src/lib/ledger.js`, `twrIndex`), para que aportes y retiros no cuenten
+   como retorno.
+2. **Métricas de desempeño, no VaR**: alfa, information ratio y máxima caída
+   (`src/lib/perf.js`). La pantalla avisa cuando hay menos de 60 sesiones.
+3. **Sectores con look-through**: VOO, SPY, IVV, VTI y QQQ se abren en sus
+   sectores. Los pesos del S&P 500 en `src/lib/sectors.js` son aproximados y
+   se actualizan a mano.
+4. **Reglas de inversión**: manda `project-docs/MANDATE.md`. Los rangos por
+   tramo y los topes están en `src/lib/sectors.js` (`mandateChecks`). El
+   tamaño sugerido de la boleta es 1% de la cuenta dividido por el stop.
 5. **El técnico no elige ganadores** (`TECHNICAL_VALIDATED.md`). El
    `technicalScore` v3 del snapshot es histórico y no decide; lo reemplaza el
    score de tendencia v4 en la Fase 3.
-6. **Diseño**: terminal oscura. Tokens en `src/theme.js`. JetBrains Mono. No
-   cambiar la identidad visual sin pedirlo.
+6. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
+   módulos numerados, cinta de precios y barra de estado; negro con acento
+   azul, esquinas rectas, tema claro opcional. Los colores son variables CSS en `src/index.css`;
+   `src/theme.js` las expone como tokens (`C.accent` es `var(--accent)`), así
+   que no se les puede concatenar transparencia: usar `C.accentSoft` y
+   similares. Inter para texto, JetBrains Mono para datos y rótulos. Armazón en
+   `Layout` y `components/shell/`; piezas comunes en `components/ui.jsx`. No cambiar la identidad visual sin pedirlo.
 
 ---
 
@@ -185,7 +205,7 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Antes de dar por terminada una tarea o de commitear: `npm test` y
   `npm run build` sin errores.
 - Desarrollo local: `npm run dev`. `vite.config.js` simula `/api/quote`,
-  `/api/candles` y `/api/theses`; el resto de `api/` solo corre en Vercel.
+  `/api/candles`, `/api/theses` y `/api/events`; el resto de `api/` solo corre en Vercel.
 - El usuario está aprendiendo. Explicar cada cambio en dos líneas.
 
 ---
@@ -193,5 +213,8 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 ## PENDIENTES CONOCIDOS
 
 - Rotar la key de Finnhub (estuvo en texto plano en un documento ya borrado).
-- `src/lib/supabase.js` quedó sin uso desde que Thesis lee por la API.
+- Pasar el libro de órdenes de localStorage a Supabase (Fase 2.1).
+- Pesos sectoriales del S&P 500 desde una fuente real (Fase 2.3).
+- Earnings no cubre emisores extranjeros (6-K), como NU.
+- El Scan sigue con el snapshot v3; el score de tendencia v4 es la Fase 3.
 - `README_HIDDEN_GEMS.md` está duplicado en la raíz y en `project-docs/`.

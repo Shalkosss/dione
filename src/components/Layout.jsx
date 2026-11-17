@@ -1,127 +1,104 @@
-import React from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { C, mono } from "../theme.js";
+import { NAV_ITEMS, findNavItem } from "./nav.js";
+import { useMarketClock, useTheme } from "../lib/useShell.js";
+import { useLedger, ACCOUNTS } from "../store/LedgerContext.jsx";
+import CommandLine from "./shell/CommandLine.jsx";
+import TickerTape from "./shell/TickerTape.jsx";
+import Icon from "./icons.jsx";
 
-const NAV = [
-  { to: "/", label: "Optimizer", phase: 1 },
-  { to: "/risk", label: "Risk Engine", phase: 1 },
-  { to: "/chart", label: "Chart", phase: 1 },
-  { to: "/watchlist", label: "Watchlist", phase: 1 },
-  { to: "/thesis", label: "Thesis Log", phase: 1 },
-  { to: "/screener", label: "Screener", phase: 1 },
-  { to: "/hidden-gems", label: "Hidden Gems", phase: 1 },
-];
+function AccountSwitch() {
+  const { activeId, setActive } = useLedger();
+  return (
+    <div style={{ display: "inline-flex" }} title="Cuenta activa: cada una tiene su propio libro de órdenes">
+      {Object.entries(ACCOUNTS).map(([id, acc]) => (
+        <button key={id} className="dione-chip" data-active={activeId === id} onClick={() => setActive(id)} style={{ marginLeft: -1 }}>
+          {acc.label.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
 
+function MarketClock({ status }) {
+  const color = status.open ? C.pos : C.muted;
+  return (
+    <div className="dione-hide-narrow" title="Sesión regular de NYSE (no considera feriados)" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: mono, fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>
+      <span className={status.open ? "dione-live-dot" : undefined} style={{ width: 7, height: 7, background: color }} />
+      <span style={{ color }}>{status.label.toUpperCase()}</span>
+      <span>NY {status.time}</span>
+    </div>
+  );
+}
+
+// Armazón de terminal: barra de comandos, módulos numerados, cinta de precios
+// y barra de estado. Alt+1…7 cambia de módulo; Ctrl+K enfoca la línea de comandos.
 export default function Layout({ children }) {
-  const loc = useLocation();
-  const current =
-    NAV.find((n) => n.to === loc.pathname)?.label || "DIONE";
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { theme, toggle: toggleTheme } = useTheme();
+  const status = useMarketClock();
+  const { activeId, account } = useLedger();
+  const [focusSignal, setFocusSignal] = useState(0);
+
+  const onKey = useCallback((e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      setFocusSignal((n) => n + 1);
+      return;
+    }
+    const target = e.altKey && NAV_ITEMS.find((n) => n.key === e.key);
+    if (target) { e.preventDefault(); navigate(target.to); }
+  }, [navigate]);
+
+  useEffect(() => {
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onKey]);
+
+  const page = findNavItem(pathname);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      {/* SIDEBAR */}
-      <aside
-        style={{
-          width: 196,
-          flexShrink: 0,
-          background: C.panel,
-          borderRight: `1px solid ${C.border}`,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            padding: "20px 18px 16px",
-            borderBottom: `1px solid ${C.border}`,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 21,
-              fontWeight: 700,
-              letterSpacing: "0.16em",
-              color: C.accent,
-            }}
-          >
-            DIONE
-          </div>
-          <div style={{ fontSize: 9.5, color: C.muted, letterSpacing: "0.06em" }}>
-            ASSET MANAGEMENT v3
-          </div>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: C.bg }}>
+        <header style={{ display: "flex", alignItems: "center", gap: 14, padding: "7px 14px", borderBottom: `1px solid ${C.border}`, background: C.panel }}>
+          <NavLink to="/" style={{ display: "flex", alignItems: "baseline", gap: 8, fontFamily: mono }}>
+            <span style={{ background: C.accent, color: "#fff", fontWeight: 700, fontSize: 12.5, letterSpacing: "0.16em", padding: "3px 8px 3px 10px" }}>DIONE</span>
+            <span className="dione-hide-narrow" style={{ fontSize: 10, color: C.muted, letterSpacing: "0.1em" }}>TERMINAL</span>
+          </NavLink>
+          <CommandLine focusSignal={focusSignal} />
+          <span style={{ flex: 1 }} />
+          <MarketClock status={status} />
+          <AccountSwitch />
+          <button className="dione-chip" onClick={toggleTheme} aria-label={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"} title={theme === "dark" ? "Tema claro" : "Tema oscuro"} style={{ padding: "0 8px" }}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={14} />
+          </button>
+        </header>
 
-        <nav style={{ padding: "10px 8px", flex: 1 }}>
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              style={({ isActive }) => ({
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "9px 12px",
-                margin: "2px 0",
-                borderRadius: 4,
-                fontSize: 12.5,
-                background: isActive ? C.panel2 : "transparent",
-                color: isActive ? C.accent : C.muted,
-                borderLeft: isActive
-                  ? `2px solid ${C.accent}`
-                  : "2px solid transparent",
-              })}
-            >
-              <span>{n.label}</span>
-              {n.phase > 1 && (
-                <span
-                  style={{
-                    fontSize: 8.5,
-                    color: C.muted,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 3,
-                    padding: "1px 4px",
-                  }}
-                >
-                  F{n.phase}
-                </span>
-              )}
+        <nav className="dione-scroll-x" style={{ display: "flex", borderBottom: `1px solid ${C.border}`, background: C.panel }}>
+          {NAV_ITEMS.map((item) => (
+            <NavLink key={item.to} to={item.to} end className="dione-tab" title={`${item.hint} (Alt+${item.key})`}>
+              <span className="dione-tab-key">{item.key}</span>
+              {item.label}
             </NavLink>
           ))}
         </nav>
 
-        <div
-          style={{
-            padding: "12px 14px",
-            borderTop: `1px solid ${C.border}`,
-            fontSize: 9.5,
-            color: C.muted,
-            lineHeight: 1.6,
-          }}
-        >
-          Fase 1 activa.
-          <br />
-          F2-F4 en construcción.
-        </div>
-      </aside>
+        <TickerTape />
+      </div>
 
-      {/* MAIN */}
-      <main style={{ flex: 1, minWidth: 0 }}>
-        <header
-          style={{
-            height: 46,
-            borderBottom: `1px solid ${C.border}`,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 22px",
-            fontSize: 12,
-            color: C.muted,
-            letterSpacing: "0.06em",
-          }}
-        >
-          DIONE / <span style={{ color: C.text, marginLeft: 6 }}>{current}</span>
-        </header>
-        <div style={{ padding: "20px 22px 48px" }}>{children}</div>
+      <main key={pathname} className="dione-page dione-content" style={{ flex: 1, minWidth: 0, width: "100%", maxWidth: 1760, margin: "0 auto", padding: "12px 14px 44px" }}>
+        {children}
       </main>
+
+      <footer style={{ position: "sticky", bottom: 0, zIndex: 20, display: "flex", gap: 18, alignItems: "center", padding: "4px 14px", borderTop: `1px solid ${C.border}`, background: C.panel, fontFamily: mono, fontSize: 10.5, color: C.muted, whiteSpace: "nowrap", overflow: "hidden" }}>
+        <span style={{ color: C.accent }}>{page ? `${page.key} ${page.label.toUpperCase()}` : "DIONE"}</span>
+        <span>CUENTA {ACCOUNTS[activeId].label.toUpperCase()} · {account.transactions.length} órdenes · ficticia</span>
+        <span className="dione-hide-narrow">{page?.hint}</span>
+        <span style={{ flex: 1 }} />
+        <span className="dione-hide-narrow">Alt+1…7 módulos · Ctrl+K comando</span>
+      </footer>
     </div>
   );
 }

@@ -1,21 +1,19 @@
 import React, { lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
-import Placeholder from "./pages/Placeholder.jsx";
-import { C } from "./theme.js";
+import { C, mono } from "./theme.js";
 
-// Las páginas pesadas (Recharts, Monte Carlo, scan de universo) se cargan
-// bajo demanda — recorta el bundle inicial sin perder funcionalidad.
-const Optimizer = lazy(() => import("./pages/Optimizer.jsx"));
-const Risk = lazy(() => import("./pages/Risk.jsx"));
-const Chart = lazy(() => import("./pages/Chart.jsx"));
-const Watchlist = lazy(() => import("./pages/Watchlist.jsx"));
-const Screener = lazy(() => import("./pages/Screener.jsx"));
-const HiddenGems = lazy(() => import("./pages/HiddenGems.jsx"));
+// Cada módulo se carga bajo demanda: recorta el bundle inicial.
+const Portfolio = lazy(() => import("./pages/Portfolio.jsx"));
+const Performance = lazy(() => import("./pages/Performance.jsx"));
+const Market = lazy(() => import("./pages/Market.jsx"));
+const Scan = lazy(() => import("./pages/HiddenGems.jsx"));
+const Earnings = lazy(() => import("./pages/Earnings.jsx"));
 const Thesis = lazy(() => import("./pages/Thesis.jsx"));
+const Chart = lazy(() => import("./pages/Chart.jsx"));
 
 const Loading = () => (
-  <div style={{ padding: 32, color: C.muted, fontSize: 12 }}>Cargando…</div>
+  <div style={{ padding: 32, color: C.muted, fontFamily: mono, fontSize: 11.5 }}>cargando módulo…</div>
 );
 
 export default function App() {
@@ -23,13 +21,19 @@ export default function App() {
     <Layout>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Optimizer />} />
-          <Route path="/risk" element={<Risk />} />
-          <Route path="/chart" element={<Chart />} />
+          <Route path="/" element={<Portfolio />} />
+          <Route path="/performance" element={<Performance />} />
+          <Route path="/market" element={<Market />} />
+          <Route path="/scan" element={<Scan />} />
+          <Route path="/earnings" element={<Earnings />} />
           <Route path="/thesis" element={<Thesis />} />
-          <Route path="/screener" element={<Screener />} />
-          <Route path="/hidden-gems" element={<HiddenGems />} />
-          <Route path="/watchlist" element={<Watchlist />} />
+          <Route path="/chart" element={<Chart />} />
+          {/* Rutas del diseño anterior: llevan a su reemplazo. */}
+          <Route path="/hidden-gems" element={<Navigate to="/scan" replace />} />
+          <Route path="/screener" element={<Navigate to="/scan" replace />} />
+          <Route path="/risk" element={<Navigate to="/performance" replace />} />
+          <Route path="/watchlist" element={<Navigate to="/market" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     </Layout>

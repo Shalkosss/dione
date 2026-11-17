@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => {
     },
   };
 
-  // Plugin de dev — sirve /api/theses y /api/theses/<id> ejecutando las mismas
+  // Plugin de dev — sirve /api/theses, /api/theses/<id> y /api/events ejecutando las mismas
   // funciones de Vercel (api/theses.js y api/theses/[id].js). Necesita en
   // .env.local: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y THESES_TOKEN.
   const devThesesShim = {
@@ -75,10 +75,11 @@ export default defineConfig(({ mode }) => {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const url = new URL(req.url || "/", "http://localhost");
-        const match = url.pathname.match(/^\/api\/theses(?:\/([^/]+))?$/);
+        const isEvents = url.pathname === "/api/events";
+        const match = isEvents ? ["/api/events"] : url.pathname.match(/^\/api\/theses(?:\/([^/]+))?$/);
         if (!match) return next();
 
-        for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "THESES_TOKEN"]) {
+        for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "THESES_TOKEN", "SEC_USER_AGENT"]) {
           if (env[k]) process.env[k] = env[k];
         }
         const chunks = [];
@@ -102,7 +103,8 @@ export default defineConfig(({ mode }) => {
         };
 
         try {
-          const mod = await server.ssrLoadModule(match[1] ? "/api/theses/[id].js" : "/api/theses.js");
+          const file = isEvents ? "/api/events.js" : match[1] ? "/api/theses/[id].js" : "/api/theses.js";
+          const mod = await server.ssrLoadModule(file);
           await mod.default(req, res);
         } catch (e) {
           res.status(500).json({ success: false, error: `dev shim: ${e.message}` });

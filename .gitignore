@@ -26,3 +26,9 @@ tools/cowork/alerts/*
 !tools/cowork/alerts/.gitkeep
 tools/cowork/logs/*
 !tools/cowork/logs/.gitkeep
+
+# Archivos de trabajo ajenos al proyecto: nunca al repo
+*.xlsx
+*.xls
+*.pptx
+*.docx

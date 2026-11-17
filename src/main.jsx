@@ -2,15 +2,15 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
-import { PortfolioProvider } from "./store/PortfolioContext.jsx";
+import { LedgerProvider } from "./store/LedgerContext.jsx";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
-      <PortfolioProvider>
+      <LedgerProvider>
         <App />
-      </PortfolioProvider>
+      </LedgerProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

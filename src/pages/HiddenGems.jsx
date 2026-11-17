@@ -89,7 +89,10 @@ export default function HiddenGems() {
     });
     try {
       const res = await fetch(`/api/screener?${qs}`);
-      const json = await res.json();
+      // En desarrollo local /api/screener no existe y devuelve HTML en vez de JSON.
+      const json = await res.json().catch(() => {
+        throw new Error("El snapshot solo está disponible en la web publicada (Vercel); en local este endpoint no corre.");
+      });
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setData(json);
     } catch (e) {

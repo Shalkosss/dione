@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { C, panel, btn } from "../theme.js";
-import { Panel, Stat } from "../components/Panel.jsx";
+import { Panel } from "../components/Panel.jsx";
+import { KpiCard, KpiGrid, Segmented, EmptyState } from "../components/ui.jsx";
 import ThesisTable from "../components/thesis/ThesisTable.jsx";
 import ThesisDetail from "../components/thesis/ThesisDetail.jsx";
 import EfficiencyPanel from "../components/thesis/EfficiencyPanel.jsx";
@@ -31,7 +32,7 @@ export default function Thesis() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState("vivas");
+  const [chosenFilter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [version, setVersion] = useState(0); // fuerza recarga del detalle
@@ -57,6 +58,8 @@ export default function Thesis() {
     () => Object.fromEntries(FILTERS.map((f) => [f.key, rows.filter(f.test).length])),
     [rows],
   );
+  // Sin elección del usuario: "Vivas" si hay alguna; si todas cerraron, "Todas".
+  const filter = chosenFilter ?? (counts.vivas > 0 || !rows.length ? "vivas" : "todas");
   const visible = rows.filter(FILTERS.find((f) => f.key === filter).test);
 
   const handleExport = () => {
@@ -66,25 +69,20 @@ export default function Thesis() {
 
   return (
     <div>
-      <div style={{ ...panel, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 12 }}>
-        <Stat label="TESIS" value={rows.length} />
-        <Stat label="ARMADAS" value={stats?.byStatus?.ARMADA ?? 0} color={C.accent} />
-        <Stat label="ABIERTAS" value={stats?.byStatus?.ABIERTA ?? 0} color={C.blue} />
-        <Stat label="SIN ORDEN" value={stats?.byStatus?.SIN_ORDEN ?? 0} />
-        <Stat label="PARA REVISAR" value={counts.revisar} color={counts.revisar ? C.accent : C.text} />
-      </div>
+      <KpiGrid>
+        <KpiCard label="Tesis" value={rows.length} hint="registradas" />
+        <KpiCard label="Armadas" value={stats?.byStatus?.ARMADA ?? 0} color={C.amber} hint="orden límite esperando" />
+        <KpiCard label="Abiertas" value={stats?.byStatus?.ABIERTA ?? 0} color={C.blue} hint="posición en curso" />
+        <KpiCard label="Sin orden" value={stats?.byStatus?.SIN_ORDEN ?? 0} hint="solo seguimiento" />
+        <KpiCard label="Para revisar" value={counts.revisar} color={counts.revisar ? C.accent : C.text} hint="bandera o post-mortem" />
+      </KpiGrid>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            className="dione-hover"
-            onClick={() => setFilter(f.key)}
-            style={{ ...btn, color: filter === f.key ? C.accent : C.muted, borderColor: filter === f.key ? C.accent : C.border }}
-          >
-            {f.label} {counts[f.key]}
-          </button>
-        ))}
+        <Segmented
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({ key: f.key, label: f.label, count: counts[f.key] }))}
+        />
         <span style={{ flex: 1 }} />
         {loading && <span style={{ fontSize: 11, color: C.muted }}>Cargando…</span>}
         <button className="dione-hover" onClick={load} disabled={loading} style={btn}>Actualizar</button>
@@ -114,11 +112,11 @@ export default function Thesis() {
         {visible.length > 0
           ? <ThesisTable rows={visible} selectedId={selectedId} onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))} />
           : (
-            <div style={{ fontSize: 11.5, color: C.muted, padding: "8px 0" }}>
-              {loading ? "Cargando…" : rows.length
-                ? "Ninguna tesis en este filtro."
-                : "Todavía no hay tesis. Importá el bloque JSON que emite DIONE al terminar un /deep."}
-            </div>
+            <EmptyState title={loading ? "Cargando…" : rows.length ? "Ninguna tesis en este filtro" : "Todavía no hay tesis"}>
+              {!loading && (rows.length
+                ? "Probá con otra pestaña: las tesis que ya cerraron están en Cerradas y en Todas."
+                : "Importá el bloque JSON que emite DIONE al terminar un /deep.")}
+            </EmptyState>
           )}
       </Panel>
 

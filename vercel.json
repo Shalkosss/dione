@@ -17,6 +17,7 @@
     "api/theses/[id].js":  { "maxDuration": 10 },
     "api/screener.js":     { "maxDuration": 10 },
     "api/smart-money.js":  { "maxDuration": 5 },
-    "api/healthz.js":      { "maxDuration": 5 }
+    "api/healthz.js":      { "maxDuration": 5 },
+    "api/events.js":       { "maxDuration": 30 }
   }
 }
