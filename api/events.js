@@ -10,9 +10,14 @@
 // una nota: para ellos EDGAR no permite identificar la fecha de resultados.
 //
 // Respuesta: { success, data: [{ ticker, name, events, note }], meta }
+//
+// GET /api/events?recent=1   → empresas del universo que reportaron en las
+// últimas 5 sesiones, con la reacción del precio. Lo arma el cron
+// refresh-smart-money (11:00 UTC) en la fila 'events'; acá solo se lee.
 
 import { fetchTickerCikMap, fetchRecentFilings } from '../lib/edgar.js';
 import { extractEarnings, parseTickers } from '../lib/earningsEvents.js';
+import { readRow } from '../lib/store.js';
 
 export const config = { maxDuration: 30 };
 
@@ -46,11 +51,26 @@ async function eventsFor(ticker, cikMap) {
   }
 }
 
+async function recentEvents(res) {
+  let row;
+  try {
+    row = await readRow('events');
+  } catch (e) {
+    console.error('[events] recent:', e);
+    return res.status(500).json({ success: false, error: 'No se pudo leer el barrido de eventos' });
+  }
+  if (!row) return res.status(503).json({ success: false, error: 'Todavía no corrió el barrido de eventos (cron refresh-smart-money, 11:00 UTC)' });
+  res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
+  const { events, ...meta } = row;
+  return res.status(200).json({ success: true, data: events, meta: { ...meta, total: events.length } });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ success: false, error: 'método no permitido' });
   }
+  if (req.query.recent === '1' || req.query.recent === 'true') return recentEvents(res);
   const tickers = parseTickers(req.query.tickers);
   const requested = parseTickers(req.query.tickers, 500).length;
   if (!tickers.length) return res.status(400).json({ success: false, error: 'Falta ?tickers=AAA,BBB (máximo 25)' });

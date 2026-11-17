@@ -86,7 +86,9 @@ La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma
 
 | Endpoint | Qué hace |
 |---|---|
-| `GET /api/screener` | Filtra y rankea el snapshot precomputado. Modos `gems`, `fundamental`, `technical`, `combo` |
+| `GET /api/screener` | Filtra y rankea el snapshot precomputado. Modos `gems`, `fundamental`, `technical`, `combo`; `megacap=1` lista solo megacaps |
+| `GET /api/scan` | Rewrite a `/api/screener?mode=scan`: régimen, tablero sectorial, descubrimiento (máx. 3 por sector), megacaps y marcas semanales (`lib/scanApi.js`) |
+| `GET /api/sectors`, `GET /api/regime` | Rewrites a `mode=sectors` y `mode=regime`. Los calcula `refresh-technical` y quedan en `meta.market` |
 | `GET /api/smart-money` | Snapshot de insiders y analistas. `?ticker=` para uno solo |
 | `GET /api/quote/[ticker]` | Cotización vía Finnhub (usa `FINNHUB_KEY`) |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
@@ -111,7 +113,7 @@ función existente.
 
 | Hora | Cron | Qué hace |
 |---|---|---|
-| 09:00 | `refresh-gems` | Universo y fundamentales desde SEC EDGAR, precio de Stooq, quality gate y preScore |
+| 09:00 | `refresh-gems` | Universo y fundamentales desde SEC EDGAR, precio (Finnhub + Yahoo), quality gate, preScore, percentil por sector, megacaps (`lib/universe.js`) y marcas NUEVO/SUBE/BAJA contra la fila `weekly` |
 | 10:00 | `refresh-technical` | Velas de Yahoo para todos los gate-passers (más SPY y los 11 ETFs): `trendScore` v4 (`lib/trendScore.js`) y `technicalScore` v3 histórico. Corta a los 210 s; si falla más del 30% no pisa los scores previos |
 | 11:00 | `refresh-smart-money` | Insiders y analistas (Finnhub) |
 | 22:00 | `refresh-theses` | Tracker: reproduce cada tesis con velas de Yahoo. Sin LLM |
@@ -122,7 +124,7 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 
 | Tabla | Contenido | Quién escribe |
 |---|---|---|
-| `hidden_gems_snapshot` | Una fila `latest` con el snapshot JSONB | `refresh-gems`, `refresh-technical` |
+| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB y fila `weekly` con el ranking de esta semana y la anterior | `refresh-gems`, `refresh-technical` |
 | `smart_money_snapshot` | Una fila `latest` | `refresh-smart-money` |
 | `symbol_metadata` | Cache de sector e industria (`001_symbol_metadata.sql`) | `lib/finnhub.js` |
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
@@ -196,7 +198,11 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    técnico (`/api/screener?mode=technical`, columna Tendencia del Scan) usa el
    `trendScore` v4. Etiqueta extra `ALCISTA` para el hueco que deja el
    documento (sobre SMA200, entre +5% y +10% de la SMA50, RSI normal).
-6. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
+6. **Gate con deuda sin tag** (17-nov-2026): si una empresa no reporta tags
+   de deuda en XBRL y su balance cuadra, pasivos/patrimonio se usa como techo
+   del D/E (la deuda no puede superar a los pasivos). Pasa el gate solo si ese
+   techo ya es menor a 2 (`debtUntagged` en el snapshot). No se asume deuda cero.
+7. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
    módulos numerados, cinta de precios y barra de estado; negro con acento
    azul, esquinas rectas, tema claro opcional. Los colores son variables CSS en `src/index.css`;
    `src/theme.js` las expone como tokens (`C.accent` es `var(--accent)`), así
@@ -227,5 +233,6 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Aplicar `migrations/003_transactions.sql` en Supabase (sin ella el libro queda solo en el navegador).
 - Pesos sectoriales del S&P 500 desde una fuente real (Fase 2.3).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
-- Fase 3 pendiente: sector GICS vacío en ~42% del universo (sin él la fuerza relativa usa SPY, bandera `benchmark_spy`), megacaps fuera del gate, snapshot semanal para NUEVO/SUBE/BAJA.
+- Fase 3 pendiente: ítem 11 (datos sin key: dejar Finnhub como opcional) e ítem 12 (`/api/events` de las últimas 5 sesiones para todo el universo; hoy solo por ticker).
+- `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
 - `README_HIDDEN_GEMS.md` está duplicado en la raíz y en `project-docs/`.

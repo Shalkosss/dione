@@ -64,7 +64,11 @@ const CAP_PRESETS = [
   { id: "tier3", label: "Tier 3 (300M–2B)", min: 300_000_000, max: 2_000_000_000 },
   { id: "micro", label: "Micro (<300M)", min: 0, max: 300_000_000 },
   { id: "all", label: "Todo (0–10B)", min: 0, max: 10_000_000_000 },
+  { id: "large", label: "Grandes (10B–200B)", min: 10_000_000_000, max: 200_000_000_000 },
+  { id: "megacap", label: "Megacaps (>200B, pasen o no el gate)", min: 0, max: 1e15, megacap: true },
 ];
+
+const MARK_TONE = { NUEVO: C.accent, SUBE: C.pos, BAJA: C.neg };
 
 // ---- página principal ----
 
@@ -89,6 +93,7 @@ export default function HiddenGems() {
       capMax: String(preset.max),
       minScore: String(minScore),
       limit: "100",
+      ...(preset.megacap ? { megacap: "1" } : {}),
     });
     try {
       const res = await fetch(`/api/screener?${qs}`);
@@ -128,6 +133,12 @@ export default function HiddenGems() {
       preScore: r.preScore,
       trendScore: r.trendScore ?? null,
       trendLabel: r.trendLabel ?? null,
+      sectorPct: r.preScoreSectorPct ?? null,
+      gicsSector: r.gicsSector ?? null,
+      weeklyMark: r.weeklyMark ?? null,
+      rankPrevWeek: r.rankPrevWeek ?? null,
+      gatePass: r.gatePass,
+      gateReasons: r.gateReasons ?? [],
       ...r.metrics,
     }));
     return flat.sort((a, b) => {
@@ -250,13 +261,14 @@ export default function HiddenGems() {
           }
         >
           <div style={{ overflowX: "auto", margin: -16 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                   <th style={{ ...th, textAlign: "right", paddingLeft: 16, width: 36 }}>#</th>
                   <th style={{ ...th, textAlign: "left", paddingLeft: 8 }}>Ticker</th>
                   <th style={{ ...th, textAlign: "left" }}>Nombre</th>
                   <SortHeader label="Score"   field="preScore"     sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
+                  <SortHeader label="% sector" field="sectorPct" sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
                   <SortHeader label="Tendencia" field="trendScore" sortBy={sortBy} onSort={handleSort} style={{ width: 130 }} />
                   <SortHeader label="Cap"      field="marketCap"    sortBy={sortBy} onSort={handleSort} style={{ width: 80 }} />
                   <SortHeader label="ROE"      field="roe"          sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
@@ -276,12 +288,21 @@ export default function HiddenGems() {
                     </td>
                     <td style={{ ...td, textAlign: "left", paddingLeft: 8 }}>
                       <Link to={`/chart?t=${r.symbol}`} title="Ver gráfico" style={{ color: C.accent, fontWeight: 700 }}>{r.symbol}</Link>
+                      {r.weeklyMark && (
+                        <span title={r.rankPrevWeek ? `puesto la semana pasada: ${r.rankPrevWeek}` : "no estaba en el ranking la semana pasada"} style={{ marginLeft: 6, fontSize: 9, letterSpacing: "0.06em", color: MARK_TONE[r.weeklyMark] }}>{r.weeklyMark}</span>
+                      )}
+                      {r.gatePass === false && (
+                        <span title={r.gateReasons.join(" · ")} style={{ marginLeft: 6, fontSize: 9, color: C.amber }}>FUERA DEL GATE</span>
+                      )}
                     </td>
-                    <td style={{ ...td, textAlign: "left", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <td style={{ ...td, textAlign: "left", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.gicsSector || "sin sector"}>
                       {r.name || "—"}
                     </td>
                     <td style={{ ...td, fontSize: 15, fontWeight: 700 }}>
                       <ScoreBadge score={r.preScore} />
+                    </td>
+                    <td style={{ ...td, color: C.text }} title="Percentil del pre-score dentro de su sector GICS (100 = el mejor del sector)">
+                      {r.sectorPct == null ? <span style={{ color: C.muted }}>—</span> : Math.round(r.sectorPct * 100)}
                     </td>
                     <td style={{ ...td, whiteSpace: "nowrap" }} title="Score de tendencia v4 (0-100) y estado. Describe la tendencia; no elige ganadores.">
                       {r.trendScore == null ? <span style={{ color: C.muted }}>—</span> : (
@@ -311,6 +332,7 @@ export default function HiddenGems() {
       <div style={{ marginTop: 14, fontSize: 10, color: C.muted, lineHeight: 1.7 }}>
         <b style={{ color: C.text }}>Quality gate:</b> ROE {">"} 10% · FCF positivo · D/E {"<"} 2.{" "}
         <b style={{ color: C.text }}>Pre-score:</b> calidad 50 · márgenes 25 · value 15 · solidez 10.{" "}
+        <b style={{ color: C.text }}>% sector:</b> percentil del pre-score dentro de su sector. <b style={{ color: C.text }}>NUEVO / SUBE / BAJA:</b> cambio de 10 puestos o más contra el ranking de la semana pasada.{" "}
         <b style={{ color: C.text }}>Tendencia (v4):</b> SMA200 20 · pendiente 15 · SMA50 sobre SMA200 10 · momentum 25 · fuerza vs sector 15 · zona de entrada 15. EN ZONA es la entrada típica; EXTENDIDA conviene esperar retroceso.{" "}
         Score ≥ 70 <span style={{ color: C.pos }}>●</span> · 50–69 <span style={{ color: C.accent }}>●</span> · {"<"}50 <span style={{ color: C.neg }}>●</span>.{" "}
         Esto es un <b style={{ color: C.text }}>screen barato</b> para armar shortlist — el análisis serio (Beneish, Piotroski, DCF) va en DIONE sobre el top 3-5.{" "}

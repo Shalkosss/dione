@@ -29,8 +29,17 @@
 //   /scan-fundamental  → GET /api/screener?mode=fundamental&minScore=60&limit=25
 //   /scan-combo        → GET /api/screener?mode=combo&limit=10
 //   /scan-combo +bord  → GET /api/screener?mode=combo&includeBorderline=true
+//
+// Vistas del Scan v4.1 (lib/scanApi.js), también expuestas como rutas propias
+// en vercel.json:
+//   /api/scan      → mode=scan     régimen, sectores, descubrimiento (máx. 3 por
+//                                   sector), megacaps y marcas semanales
+//   /api/sectors   → mode=sectors  tablero de los 11 ETFs sectoriales
+//   /api/regime    → mode=regime   SPY contra SMA200, VIX y amplitud
+//   megacap=1      → solo megacaps, pasen o no el gate
 
 import { readSnapshot } from '../lib/store.js';
+import { SCAN_MODES, buildScanResponse } from '../lib/scanApi.js';
 
 export const config = { maxDuration: 10 };
 
@@ -45,6 +54,14 @@ export default async function handler(req, res) {
   try {
     const q = req.query || {};
     const mode = (q.mode || 'gems').toString().toLowerCase();
+    if (SCAN_MODES.includes(mode)) {
+      const snap = await readSnapshot();
+      if (!snap?.gems) return res.status(503).json({ error: 'snapshot todavía no generado — corré /api/cron/refresh-gems' });
+      const perSector = Math.max(1, Math.min(num(q.perSector, 3), 10));
+      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+      return res.status(200).json(buildScanResponse(snap, mode, { perSector }));
+    }
+    const onlyMegacaps = q.megacap === '1' || q.megacap === 'true';
     const def = MODE_DEFAULTS[mode] || MODE_DEFAULTS.gems;
 
     const capMin = num(q.capMin, def.capMin);
@@ -72,6 +89,7 @@ export default async function handler(req, res) {
     let rows = Object.values(snap.gems);
 
     rows = rows.filter((r) => {
+      if (onlyMegacaps) return !!r.megacap;
       if (r.marketCap == null) {
         if (!includeNoCap) return false;
       } else if (r.marketCap < capMin || r.marketCap > capMax) {
@@ -206,6 +224,11 @@ export default async function handler(req, res) {
         trendBreakdown: r.trendBreakdown ?? null,
         trendInputs: r.trendInputs ?? null,
         trendFlags: r.trendFlags ?? [],
+        preScoreSectorPct: r.preScoreSectorPct ?? null,
+        rank: r.rank ?? null,
+        weeklyMark: r.weeklyMark ?? null,
+        rankPrevWeek: r.rankPrevWeek ?? null,
+        megacap: r.megacap ?? false,
         ...extra,
       };
     }

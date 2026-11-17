@@ -6,8 +6,17 @@
 // estructura: { meta, results: { [symbol]: { score, breakdown, insider, analyst } } }.
 //
 // El endpoint /api/smart-money sirve este snapshot.
+//
+// Segundo paso, independiente: barre SEC EDGAR para ver qué empresas del
+// universo publicaron resultados (8-K ítem 2.02) en las últimas 5 sesiones y
+// guarda la lista con la reacción del precio en la fila 'events' de
+// hidden_gems_snapshot. Lo sirve /api/events?recent=1. Si falla, smart money
+// ya quedó guardado.
 
-import { readSnapshot } from '../../lib/store.js';
+import { readSnapshot, writeRow } from '../../lib/store.js';
+import { fetchTickerCikMap, fetchRecentFilings } from '../../lib/edgar.js';
+import { fetchCandlesBatch } from '../../lib/yahoo.js';
+import { RECENT_SESSIONS, toSeries, windowStart, recentReporters, withReactions } from '../../lib/eventsScan.js';
 import { computeSmartMoneyBatch } from '../../lib/smartMoney.js';
 import { createClient } from '@supabase/supabase-js';
 
@@ -87,9 +96,63 @@ export default async function handler(req, res) {
     };
 
     await writeSnapshot(snapshot);
-    return res.status(200).json({ ok: true, ...snapshot.meta });
+    let events = null;
+    try {
+      events = await refreshRecentEvents(snap, t0);
+    } catch (e) {
+      console.error('[refresh-smart-money] eventos:', e);
+      events = { error: e.message };
+    }
+    return res.status(200).json({ ok: true, ...snapshot.meta, events });
   } catch (e) {
     console.error('[refresh-smart-money]', e);
     return res.status(500).json({ error: e.message, ms: Date.now() - t0 });
   }
+}
+
+const EVENTS_DEADLINE_MS = 240_000; // desde el inicio del cron
+const SEC_BATCH = 8;                // SEC pide no pasar de 10 pedidos por segundo
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function refreshRecentEvents(snap, t0) {
+  const spy = toSeries((await fetchCandlesBatch(['SPY'], { days: 20 })).get('SPY'));
+  const since = windowStart(spy, RECENT_SESSIONS);
+  if (!since) throw new Error('sin velas de SPY para fijar la ventana');
+
+  const universe = Object.values(snap.gems).filter((g) => g.gatePass || g.megacap).map((g) => g.symbol);
+  const cikMap = await fetchTickerCikMap();
+  const filings = new Map();
+  let reached = 0;
+  for (let i = 0; i < universe.length && Date.now() - t0 < EVENTS_DEADLINE_MS; i += SEC_BATCH) {
+    const batch = universe.slice(i, i + SEC_BATCH);
+    const results = await Promise.all(batch.map(async (ticker) => {
+      const cik = cikMap.get(ticker);
+      if (cik == null) return null;
+      try { return [ticker, await fetchRecentFilings(cik)]; } catch { return null; }
+    }));
+    for (const r of results) if (r) filings.set(r[0], r[1]);
+    reached = i + batch.length;
+    await sleep(1000);
+  }
+
+  const reporters = recentReporters(filings, since);
+  const candles = await fetchCandlesBatch(reporters.map((r) => r.ticker), { days: 40 });
+  const list = withReactions(reporters, candles).map((e) => ({
+    ...e,
+    gicsSector: snap.gems[e.ticker]?.gicsSector ?? null,
+    marketCap: snap.gems[e.ticker]?.marketCap ?? null,
+    preScore: snap.gems[e.ticker]?.preScore ?? null,
+  }));
+
+  const row = {
+    asOf: new Date().toISOString(),
+    since,
+    sessions: RECENT_SESSIONS,
+    universe: universe.length,
+    scanned: reached,
+    incomplete: reached < universe.length,
+    events: list,
+  };
+  await writeRow('events', row);
+  return { since, scanned: reached, universe: universe.length, reporters: list.length };
 }

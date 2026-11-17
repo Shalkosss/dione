@@ -13,7 +13,7 @@
 
 import { readSnapshot, writeSnapshot } from '../../lib/store.js';
 import { fetchCandlesBatch } from '../../lib/yahoo.js';
-import { buildTechnicalUpdates, BENCHMARKS } from '../../lib/trendRefresh.js';
+import { buildTechnicalUpdates, BENCHMARKS, marketSummary } from '../../lib/trendRefresh.js';
 
 export const config = { maxDuration: 300 };
 
@@ -35,13 +35,15 @@ export default async function handler(req, res) {
     }
 
     // Por preScore descendente: si se corta por tiempo, quedan afuera los peores.
+    // Las megacaps van siempre, aunque el tope deje afuera su preScore.
     const sorted = Object.values(snap.gems)
-      .filter((g) => g.gatePass && g.preScore != null)
+      .filter((g) => (g.gatePass || g.megacap) && g.preScore != null)
       .sort((a, b) => (b.preScore ?? 0) - (a.preScore ?? 0));
-    const passers = MAX_SYMBOLS > 0 ? sorted.slice(0, MAX_SYMBOLS) : sorted;
+    const top = MAX_SYMBOLS > 0 ? sorted.slice(0, MAX_SYMBOLS) : sorted;
+    const passers = [...top, ...sorted.filter((g) => g.megacap && !top.includes(g))];
 
     // Benchmarks primero: sin ellos no hay fuerza relativa.
-    const symbols = [...new Set([...BENCHMARKS, ...passers.map((p) => p.symbol)])];
+    const symbols = [...new Set([...BENCHMARKS, '^VIX', ...passers.map((p) => p.symbol)])];
     const candlesMap = await fetchCandlesBatch(symbols, {
       days: 400, concurrency: 5, throttleMs: 200, deadlineMs: t0 + BUDGET_MS,
     });
@@ -65,6 +67,8 @@ export default async function handler(req, res) {
       trendSkipped: stats.skipped,
       trendUniverseSize: stats.universeSize,
       breadthAboveSma200: stats.breadthAboveSma200,
+      // Régimen y tablero sectorial para /api/regime, /api/sectors y /api/scan.
+      market: { ...marketSummary(candlesMap), breadthUniverse: stats.breadthAboveSma200, asOf: now },
     };
 
     await writeSnapshot({ ...snap, gems, meta });

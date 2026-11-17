@@ -14,8 +14,9 @@ import {
 import { fetchPrices } from '../../lib/prices.js';
 import { enrichSectors } from '../../lib/finnhub.js';
 import { qualityGate, preScore } from '../../lib/scoring.js';
-import { writeSnapshot } from '../../lib/store.js';
-import { toGicsL1 } from '../../lib/gics.js';
+import { writeSnapshot, readSnapshot, readRow, writeRow } from '../../lib/store.js';
+import { gicsFor } from '../../lib/gics.js';
+import { MEGACAPS, sectorPercentiles, rankMap, rollWeekly, weeklyMarks, carryTechnical, technicalMeta } from '../../lib/universe.js';
 
 export const config = { maxDuration: 300 };
 
@@ -46,12 +47,34 @@ export default async function handler(req, res) {
     // (LongTermDebt+ShortTermDebt)/Equity y altmanZ/piotroski cuando hay data.
     const passers = [];
     let nullDebt = 0;
+    let untaggedDebtPassers = 0;
     for (const [cik, raw] of edgar.facts) {
       const ticker = cikToTicker.get(cik);
       if (!ticker) continue;
       const f0 = computeMetrics(ticker, raw);
       if (f0.debtToEquity == null) nullDebt++;
-      if (qualityGate(f0).pass) passers.push({ ticker, cik, raw });
+      if (qualityGate(f0).pass) {
+        passers.push({ ticker, cik, raw, megacap: MEGACAPS.includes(ticker) });
+        if (f0.debtUntagged) untaggedDebtPassers++;
+      }
+    }
+
+    // Megacaps: entran aunque no pasen el gate (con gatePass false y sus razones).
+    // Se buscan por ticker en el mapa de la SEC, no por CIK, porque la SEC puede
+    // listar otro ticker primero para el mismo CIK (GOOG antes que GOOGL).
+    // Se deduplica por CIK: si la empresa ya entró con otra clase (GOOG en vez
+    // de GOOGL), se renombra a la de la lista y se marca megacap.
+    const megacapsMissing = [];
+    for (const ticker of MEGACAPS) {
+      const cik = cikMap.get(ticker);
+      const already = passers.findIndex((p) => p.cik === cik || p.ticker === ticker);
+      if (already >= 0) {
+        passers[already] = { ...passers[already], ticker, megacap: true };
+        continue;
+      }
+      const raw = cik != null ? edgar.facts.get(cik) : null;
+      if (!raw) { megacapsMissing.push(ticker); continue; }
+      passers.push({ ticker, cik, raw, megacap: true, outsideGate: true });
     }
 
     // precios + sectores en paralelo
@@ -78,11 +101,11 @@ export default async function handler(req, res) {
       const f = computeMetrics(p.ticker, p.raw, cap, pr?.price ?? null);
       const meta = sectorMap.get(p.ticker);
       if (meta?.sector) withSector++;
-      // gicsSector: mapeo del raw heterogéneo a uno de los 11 GICS L1.
-      // Probamos primero sector (Finnhub gicsSector si vino, sino finnhubIndustry),
-      // y si no mapea, intentamos industry (a veces SIC mapea mejor).
-      const gicsSector = toGicsL1(meta?.sector) || toGicsL1(meta?.industry) || null;
+      // gicsSector: override por ticker, después sector (Finnhub o descripción
+      // SIC de la SEC) y después industria. Ver lib/gics.js.
+      const gicsSector = gicsFor(p.ticker, meta?.sector, meta?.industry);
       if (gicsSector) withGics++;
+      const gate = p.outsideGate ? qualityGate(f) : { pass: true, reasons: [] };
       gems[p.ticker] = {
         symbol: p.ticker,
         name: pr?.name ?? meta?.name ?? null,
@@ -93,11 +116,43 @@ export default async function handler(req, res) {
         price: pr?.price ?? null,
         sharesOutstanding: shares,
         ...f,
-        gatePass: true,
-        gateReasons: [],
+        gatePass: gate.pass,
+        gateReasons: gate.reasons,
+        megacap: p.megacap || false,
         preScore: preScore(f),
         lastChecked: now,
       };
+    }
+
+    // Percentil de preScore dentro del sector y marcas semanales del ranking.
+    // Si no se pudo leer la fila 'weekly' no se marca ni se escribe: escribirla
+    // con prev vacío borraría la foto de la semana pasada.
+    const sectorPct = sectorPercentiles(gems);
+    const ranks = rankMap(gems);
+    let weekly = null;
+    try {
+      weekly = rollWeekly(await readRow('weekly'), new Date().toISOString(), ranks);
+    } catch (e) {
+      console.warn('[refresh-gems] no se leyó el ranking semanal:', e.message);
+    }
+    const marks = weekly ? weeklyMarks(ranks, weekly.prev?.ranks ?? null) : {};
+    // Los campos técnicos de ayer se conservan hasta que corra refresh-technical
+    // (10:00 UTC); si no, el Scan pasaría una hora sin tendencia ni régimen.
+    const previous = await readSnapshot();
+    for (const sym of Object.keys(gems)) {
+      gems[sym] = {
+        ...carryTechnical(previous?.gems?.[sym]),
+        ...gems[sym],
+        preScoreSectorPct: sectorPct[sym] ?? null,
+        rank: ranks[sym] ?? null,
+        rankPrevWeek: marks[sym]?.rankPrev ?? null,
+        weeklyMark: marks[sym]?.mark ?? null,
+      };
+    }
+    try {
+      if (weekly) await writeRow('weekly', weekly);
+    } catch (e) {
+      console.warn('[refresh-gems] no se guardó el ranking semanal:', e.message);
     }
 
     const snapshot = {
@@ -106,12 +161,20 @@ export default async function handler(req, res) {
         updatedAt: new Date().toISOString(),
         fiscalYear: edgar.year,
         secCoverage: edgar.coverage,
-        gatePassers: passers.length,
+        gatePassers: passers.filter((p) => !p.outsideGate).length,
+        untaggedDebtPassers,
+        megacaps: passers.filter((p) => p.megacap).length,
+        megacapsMissing,
+        weekOf: weekly?.current.weekOf ?? null,
+        prevWeekOf: weekly?.prev?.weekOf ?? null,
         priced,
         withSector,
         withGics,
         nullDebtCount: nullDebt,
         totalTracked: Object.keys(gems).length,
+        // Régimen, tablero sectorial y estado técnico de la corrida anterior:
+        // los reemplaza refresh-technical a las 10:00 UTC.
+        ...technicalMeta(previous?.meta),
         ms: Date.now() - t0,
         sources: {
           fundamentals: 'sec-edgar-xbrl',

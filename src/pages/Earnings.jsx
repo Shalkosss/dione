@@ -9,6 +9,7 @@ import { fetchMany } from "../lib/priceHistory.js";
 import { fetchTheses } from "../lib/thesisApi.js";
 import { earningsReaction, parseTickers } from "../../lib/earningsEvents.js";
 import { sleeveOf } from "../lib/sectors.js";
+import RecentReporters from "../components/earnings/RecentReporters.jsx";
 
 const WATCH_KEY = "dione:earnings:watch";
 const TIMING = { ANTES_APERTURA: "antes de abrir", EN_SESION: "en sesión", DESPUES_CIERRE: "tras el cierre", DESCONOCIDO: "hora desconocida" };
@@ -170,6 +171,10 @@ export default function Earnings() {
           {cards.map((item) => <Card key={item.ticker} item={item} />)}
         </div>
       )}
+
+      <div style={{ marginTop: 12 }}>
+        <RecentReporters />
+      </div>
 
       <div style={{ fontSize: 11, color: C.muted, marginTop: 12, maxWidth: 900 }}>
         La fecha es la del 8-K con ítem 2.02 en SEC EDGAR. La reacción compara el cierre anterior con el cierre de la primera sesión posterior a la publicación.
