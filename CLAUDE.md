@@ -89,8 +89,8 @@ La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma
 | `GET /api/screener` | Filtra y rankea el snapshot precomputado. Modos `gems`, `fundamental`, `technical`, `combo`; `megacap=1` lista solo megacaps |
 | `GET /api/scan` | Rewrite a `/api/screener?mode=scan`: régimen, tablero sectorial, descubrimiento (máx. 3 por sector), megacaps y marcas semanales (`lib/scanApi.js`) |
 | `GET /api/sectors`, `GET /api/regime` | Rewrites a `mode=sectors` y `mode=regime`. Los calcula `refresh-technical` y quedan en `meta.market` |
-| `GET /api/smart-money` | Snapshot de insiders y analistas. `?ticker=` para uno solo |
-| `GET /api/quote/[ticker]` | Cotización vía Finnhub (usa `FINNHUB_KEY`) |
+| `GET /api/smart-money` | Snapshot de insiders (Form 4 de EDGAR) y analistas (Finnhub, opcional). `?ticker=` para uno solo |
+| `GET /api/quote/[ticker]` | Cotización vía Yahoo chart v8, sin key. Finnhub solo de respaldo si hay `FINNHUB_KEY` |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
 | `GET /api/healthz` | Frescura del snapshot |
 | `GET /api/events?tickers=` | Últimos 8-K con ítem 2.02 de SEC EDGAR por ticker (máx. 25). Sin key |
@@ -115,7 +115,7 @@ función existente.
 |---|---|---|
 | 09:00 | `refresh-gems` | Universo y fundamentales desde SEC EDGAR, precio (Finnhub + Yahoo), quality gate, preScore, percentil por sector, megacaps (`lib/universe.js`) y marcas NUEVO/SUBE/BAJA contra la fila `weekly` |
 | 10:00 | `refresh-technical` | Velas de Yahoo para todos los gate-passers (más SPY y los 11 ETFs): `trendScore` v4 (`lib/trendScore.js`) y `technicalScore` v3 histórico. Corta a los 210 s; si falla más del 30% no pisa los scores previos |
-| 11:00 | `refresh-smart-money` | Insiders y analistas (Finnhub) |
+| 11:00 | `refresh-smart-money` | Insiders desde el Form 4 de EDGAR (top 100, compras y ventas en mercado abierto; corta a los 110 s), analistas por Finnhub solo con key, y barrido de resultados de las últimas 5 sesiones |
 | 22:00 | `refresh-theses` | Tracker: reproduce cada tesis con velas de Yahoo. Sin LLM |
 
 Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
@@ -140,8 +140,9 @@ service_role. El navegador pasa siempre por `/api/theses`.
 ## VARIABLES DE ENTORNO
 
 Servidor (Vercel, y `.env.local` para desarrollo): `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `THESES_TOKEN`, `FINNHUB_KEY`,
-`SEC_USER_AGENT`. Opcionales: `TECHNICAL_MAX_SYMBOLS`, `SMART_MONEY_TOP_N`,
+`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `THESES_TOKEN`, `SEC_USER_AGENT`.
+Opcionales: `FINNHUB_KEY` (solo recomendaciones de analistas y respaldo de
+precios y sectores; sin ella todo funciona), `TECHNICAL_MAX_SYMBOLS`, `SMART_MONEY_TOP_N`,
 `SMART_MONEY_SYMBOLS`, `GEMS_YEAR`, `HEALTHZ_STALE_HOURS`.
 
 Las keys nunca van en documentos ni en el repo. `.env.example` lista los
@@ -233,6 +234,6 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Aplicar `migrations/003_transactions.sql` en Supabase (sin ella el libro queda solo en el navegador).
 - Pesos sectoriales del S&P 500 desde una fuente real (Fase 2.3).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
-- Fase 3 pendiente: ítem 11 (datos sin key: dejar Finnhub como opcional) e ítem 12 (`/api/events` de las últimas 5 sesiones para todo el universo; hoy solo por ticker).
+- Gate de deuda: si una empresa etiqueta solo parte de su deuda en XBRL, la otra parte cuenta como 0 y el D/E sale subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
 - `README_HIDDEN_GEMS.md` está duplicado en la raíz y en `project-docs/`.

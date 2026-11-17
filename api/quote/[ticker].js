@@ -1,66 +1,59 @@
-// api/quote/[ticker].js — Quote en tiempo real via Finnhub.
+// api/quote/[ticker].js — Cotización de un ticker.
 // GET /api/quote/AAPL  ->  { ticker, price, change, changePct, high, low, open, prevClose, ... }
 //
-// Lee la API key de Finnhub desde el entorno. En Vercel, configurar como FINNHUB_KEY
-// (sin prefijo VITE_) en Settings → Environment Variables, así no se expone al bundle.
-// Para dev local fallbackea a VITE_FINNHUB_KEY del .env.local.
+// Fuente principal: Yahoo chart v8, sin key (Fase 3, ítem 11). Si Yahoo no
+// responde y hay FINNHUB_KEY en el entorno, se usa Finnhub como respaldo.
 
-const FINNHUB_BASE = "https://finnhub.io/api/v1";
+import { quoteFromChart } from '../../lib/quote.js';
 
-function getKey() {
-  return process.env.FINNHUB_KEY || process.env.VITE_FINNHUB_KEY || "";
+const YAHOO_HOSTS = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'application/json',
+};
+const TICKER_RE = /^[A-Z0-9.^=-]{1,15}$/;
+
+async function fetchJson(url, headers, timeoutMs = 8000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-async function finnhub(path) {
-  const key = getKey();
-  if (!key) throw new Error("FINNHUB_KEY no configurada");
-  const url = `${FINNHUB_BASE}${path}${path.includes("?") ? "&" : "?"}token=${key}`;
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`Finnhub HTTP ${resp.status}: ${text.slice(0, 160)}`);
+async function yahooQuote(ticker) {
+  // Yahoo escribe las clases con guion (BRK-B).
+  const symbol = encodeURIComponent(ticker.replace('.', '-'));
+  for (const host of YAHOO_HOSTS) {
+    const q = quoteFromChart(await fetchJson(`https://${host}/v8/finance/chart/${symbol}?range=1d&interval=1d`, HEADERS), ticker);
+    if (q) return q;
   }
-  return resp.json();
+  return null;
+}
+
+async function finnhubQuote(ticker) {
+  const key = process.env.FINNHUB_KEY || '';
+  if (!key) return null;
+  const q = await fetchJson(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${key}`);
+  if (!q || (!q.c && !q.pc)) return null;
+  return {
+    ticker, price: q.c ?? null, change: q.d ?? null, changePct: q.dp != null ? q.dp / 100 : null,
+    high: q.h ?? null, low: q.l ?? null, open: q.o ?? null, prevClose: q.pc ?? null,
+    timestamp: q.t ? q.t * 1000 : null, name: null, currency: 'USD', exchange: null, source: 'Finnhub',
+  };
 }
 
 export default async function handler(req, res) {
-  const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!ticker) return res.status(400).json({ error: "Missing ticker" });
+  const ticker = String(req.query.ticker || '').toUpperCase().trim();
+  if (!TICKER_RE.test(ticker)) return res.status(400).json({ error: 'Ticker inválido' });
 
-  try {
-    // Quote y profile en paralelo. Profile puede fallar (símbolos no-US) — lo toleramos.
-    const [quote, profile] = await Promise.all([
-      finnhub(`/quote?symbol=${encodeURIComponent(ticker)}`),
-      finnhub(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`).catch(() => ({})),
-    ]);
-
-    // Finnhub devuelve 0 en todos los campos si el ticker no existe.
-    if (!quote.c && !quote.pc) {
-      return res.status(404).json({ error: `Ticker ${ticker} no encontrado en Finnhub` });
-    }
-
-    res.setHeader("Cache-Control", "s-maxage=30, stale-while-revalidate=60");
-    return res.status(200).json({
-      ticker,
-      fetchedAt: new Date().toISOString(),
-      price: quote.c ?? null,
-      change: quote.d ?? null,
-      changePct: quote.dp != null ? quote.dp / 100 : null, // Finnhub manda 1.23 = 1.23%
-      high: quote.h ?? null,
-      low: quote.l ?? null,
-      open: quote.o ?? null,
-      prevClose: quote.pc ?? null,
-      timestamp: quote.t ? quote.t * 1000 : null,
-      // Profile (puede venir vacío)
-      name: profile.name ?? null,
-      sector: profile.finnhubIndustry ?? null,
-      currency: profile.currency ?? "USD",
-      exchange: profile.exchange ?? null,
-      marketCap: profile.marketCapitalization ?? null, // en millones USD
-      logo: profile.logo ?? null,
-      weburl: profile.weburl ?? null,
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.message, ticker });
-  }
+  const quote = (await yahooQuote(ticker)) || (await finnhubQuote(ticker));
+  if (!quote) return res.status(404).json({ error: `Sin cotización para ${ticker}`, ticker });
+  res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+  return res.status(200).json({ ...quote, fetchedAt: new Date().toISOString() });
 }
