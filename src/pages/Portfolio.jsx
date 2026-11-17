@@ -13,6 +13,7 @@ import TradeTicket from "../components/portfolio/TradeTicket.jsx";
 import MandatePanel from "../components/portfolio/MandatePanel.jsx";
 import BenchmarkEditor from "../components/portfolio/BenchmarkEditor.jsx";
 import { Positions, Blotter } from "../components/portfolio/Positions.jsx";
+import SyncBar from "../components/portfolio/SyncBar.jsx";
 
 const signedPct = (v, d = 2) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
 const tone = (v) => (v == null ? C.muted : v >= 0 ? C.pos : C.neg);
@@ -116,6 +117,7 @@ export default function Portfolio() {
   return (
     <div>
       {data.error && <div style={{ ...panel, borderColor: C.neg, color: C.neg, marginBottom: 12, fontSize: 12 }}>{data.error}</div>}
+      <SyncBar />
       {!data.hasTrades && <Welcome onExample={loadExample} busy={busy} error={notice} />}
 
       <Hero data={{ ...data, valued }} />

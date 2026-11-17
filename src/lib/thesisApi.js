@@ -14,7 +14,7 @@ export function saveToken(token) {
   try { localStorage.setItem(TOKEN_KEY, token); } catch { /* modo privado: se pide de nuevo */ }
 }
 
-async function request(path, options) {
+export async function request(path, options) {
   let res;
   try {
     res = await fetch(path, options);
@@ -27,6 +27,7 @@ async function request(path, options) {
   }
   if (!res.ok || !body.success) {
     const err = new Error(body.error || `HTTP ${res.status}`);
+    err.status = res.status;
     err.details = body.data ?? null;
     throw err;
   }

@@ -139,6 +139,7 @@ describe("ledger: carteras de referencia escritas a mano", () => {
   it("lee pesos por línea con % y coma decimal", () => {
     expect(parseWeights("nvda 25\nMSFT: 12,5%\nbasura\nBRK.B = 10")).toEqual({ NVDA: 0.25, MSFT: 0.125, "BRK.B": 0.1 });
     expect(parseWeights("")).toEqual({});
+    expect(parseWeights("AAPL 0\nNVDA 150\nMU 10")).toEqual({ MU: 0.1 });
   });
 
   it("formatWeights es el inverso legible", () => {

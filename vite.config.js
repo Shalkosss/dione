@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => {
     },
   };
 
-  // Plugin de dev — sirve /api/theses, /api/theses/<id> y /api/events ejecutando las mismas
+  // Plugin de dev — sirve /api/theses, /api/theses/<id> (incluido /api/theses/ledger) y /api/events ejecutando las mismas
   // funciones de Vercel (api/theses.js y api/theses/[id].js). Necesita en
   // .env.local: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY y THESES_TOKEN.
   const devThesesShim = {

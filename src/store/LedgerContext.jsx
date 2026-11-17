@@ -1,9 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { validateInBook, ledgerIssues } from "../lib/ledger.js";
+import { useLedgerSync } from "./useLedgerSync.js";
 
 /* Portafolio ficticio: dos cuentas (paper y real) con su libro de órdenes, y
-   las carteras de referencia para comparar. Vive en localStorage del navegador.
-   La Fase 2 del roadmap lo pasa a una tabla `transactions` en Supabase. */
+   las carteras de referencia para comparar. La copia de trabajo vive en
+   localStorage; con token se sincroniza con Supabase (useLedgerSync.js). */
 
 const STORAGE_KEY = "dione:ledger:v1";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,6 +25,12 @@ const DEFAULT_STATE = {
     { id: "claude", name: "Claude", color: "#d98a5f", startDate: today(), weights: {} },
     { id: "grok", name: "Grok", color: "#b08cff", startDate: today(), weights: {} },
   ],
+  // Estado de sincronización. version null = nunca se sincronizó desde este navegador.
+  sync: {
+    paper: { version: null, pending: false },
+    real: { version: null, pending: false },
+    benchmarks: { pending: false },
+  },
 };
 
 function load() {
@@ -36,7 +43,7 @@ function load() {
     const valid = Object.values(accounts).every((a) => a && a.initialCash > 0 && Array.isArray(a.transactions))
       && accounts[saved?.active] && (saved.benchmarks == null || Array.isArray(saved.benchmarks));
     if (!valid) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...saved, accounts };
+    return { ...DEFAULT_STATE, ...saved, accounts, sync: { ...DEFAULT_STATE.sync, ...(saved.sync || {}) } };
   } catch {
     return DEFAULT_STATE; // dato corrupto o almacenamiento bloqueado: se empieza de cero
   }
@@ -52,6 +59,8 @@ export function LedgerProvider({ children }) {
   }, [state]);
 
   const account = state.accounts[state.active];
+  const sync = useLedgerSync(state, setState);
+  const { scheduleSync } = sync;
 
   const setActive = useCallback((id) => setState((s) => (s.accounts[id] ? { ...s, active: id } : s)), []);
 
@@ -59,9 +68,20 @@ export function LedgerProvider({ children }) {
   // "la activa en ese momento": así un cambio de cuenta a mitad de una operación
   // no puede hacer que se valide contra una cuenta y se escriba en otra.
   const activeId = state.active;
+  // Cada cambio local queda pendiente de subir a Supabase.
   const updateAccount = useCallback((id, patch) => {
-    setState((s) => ({ ...s, accounts: { ...s.accounts, [id]: { ...s.accounts[id], ...patch(s.accounts[id]) } } }));
-  }, []);
+    setState((s) => ({
+      ...s,
+      accounts: { ...s.accounts, [id]: { ...s.accounts[id], ...patch(s.accounts[id]) } },
+      sync: { ...s.sync, [id]: { ...s.sync[id], pending: true } },
+    }));
+    scheduleSync();
+  }, [scheduleSync]);
+
+  const updateBenchmarks = useCallback((change) => {
+    setState((s) => ({ ...s, benchmarks: change(s.benchmarks), sync: { ...s.sync, benchmarks: { pending: true } } }));
+    scheduleSync();
+  }, [scheduleSync]);
 
   // Devuelve { ok, errors }. Solo guarda si la orden es válida contra el libro completo.
   const placeOrder = useCallback((order) => {
@@ -100,23 +120,25 @@ export function LedgerProvider({ children }) {
   }, [activeId, updateAccount]);
 
   const saveBenchmark = useCallback((bench) => {
-    setState((s) => {
-      const exists = s.benchmarks.some((b) => b.id === bench.id);
-      const benchmarks = exists ? s.benchmarks.map((b) => (b.id === bench.id ? { ...b, ...bench } : b)) : [...s.benchmarks, bench];
-      return { ...s, benchmarks };
-    });
-  }, []);
+    updateBenchmarks((list) => (list.some((b) => b.id === bench.id)
+      ? list.map((b) => (b.id === bench.id ? { ...b, ...bench } : b))
+      : [...list, bench]));
+  }, [updateBenchmarks]);
 
   const removeBenchmark = useCallback((id) => {
-    setState((s) => ({ ...s, benchmarks: s.benchmarks.filter((b) => b.id !== id) }));
-  }, []);
+    updateBenchmarks((list) => list.filter((b) => b.id !== id));
+  }, [updateBenchmarks]);
+
+  const transactionCount = useCallback((id) => state.accounts[id]?.transactions.length ?? 0, [state.accounts]);
 
   const value = useMemo(() => ({
     activeId,
     account,
     benchmarks: state.benchmarks,
+    sync,
+    transactionCount,
     setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark,
-  }), [state, account, activeId, setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
+  }), [state, account, activeId, sync, transactionCount, setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;
 }

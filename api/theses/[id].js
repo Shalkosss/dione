@@ -2,18 +2,21 @@
 //
 // GET /api/theses/MU-2026-11-14  → { thesis, marks } (marcas diarias para el gráfico)
 // GET /api/theses/stats          → métricas de eficiencia (THESIS_LOG.md sección 6)
+// GET|PUT /api/theses/ledger     → libro de órdenes del portafolio (lib/ledgerApi.js)
 //
-// `stats` vive acá y no en un archivo propio para no gastar otra función
-// serverless (el plan Hobby de Vercel admite 12 por deploy).
+// `stats` y `ledger` viven acá y no en archivos propios para no gastar otra
+// función serverless (el plan Hobby de Vercel admite 12 por deploy).
 
 import { getThesis, getMarks, listTheses } from '../../lib/thesisStore.js';
 import { computeThesisStats } from '../../lib/thesisStats.js';
+import { handleLedger } from '../../lib/ledgerApi.js';
 
 export const config = { maxDuration: 10 };
 
 const ID_RE = /^[A-Za-z0-9._-]{3,48}$/;
 
 export default async function handler(req, res) {
+  if (req.query?.id === 'ledger') return handleLedger(req, res);
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
