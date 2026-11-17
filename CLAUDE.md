@@ -245,5 +245,5 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
 - Regla 8 del tracker (bandera de sector): `/api/sectors` ya existe, pero la lista de sobreponderados de `/macro` no llega a la web.
-- Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 está en `research/pead_2026_11/`.
+- Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 (drift post-earnings) está hecho: en el S&P 500 no hay señal explotable (`project-docs/PEAD_2026-11.md`), así que `/api/events` es contexto y no ranking.
 - Fase 5 (ML) queda condicionada a que la Fase 4 encuentre features con contenido.
