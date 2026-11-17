@@ -27,8 +27,15 @@ describe("parseSectorBreakdown (ficha de SPY en SSGA)", () => {
     expect(parseSectorBreakdown(page("Fund Sector Breakdown")).weights.Energy).toBeCloseTo(0.0362);
   });
 
-  it("rechaza tablas incompletas o páginas sin el dato", () => {
+  it("acepta la fecha con coma", () => {
+    const html = page("Index Sector Breakdown").replace(/Nov 16 2026/g, "Nov 16, 2026");
+    expect(parseSectorBreakdown(html).asOf).toBe("2026-11-16");
+  });
+
+  it("rechaza tablas incompletas (incluso con 10 sectores) o páginas sin el dato", () => {
     expect(parseSectorBreakdown(page("Index Sector Breakdown", SECTORS.slice(0, 5)))).toBeNull();
+    const ten = SECTORS.slice(0, 10).map(([n, w], i) => [n, i === 0 ? w + 1.75 : w]);
+    expect(parseSectorBreakdown(page("Index Sector Breakdown", ten))).toBeNull();
     expect(parseSectorBreakdown("<html>mantenimiento</html>")).toBeNull();
     expect(parseSectorBreakdown(null)).toBeNull();
   });

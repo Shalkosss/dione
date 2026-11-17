@@ -119,7 +119,7 @@ export default async function handler(req, res) {
   }
 }
 
-const INSIDERS_DEADLINE_MS = 110_000; // desde el inicio del cron
+const INSIDERS_DEADLINE_MS = 150_000; // desde el inicio del cron; los eventos usan lo que queda hasta 240 s
 const EVENTS_DEADLINE_MS = 240_000;
 const SEC_BATCH = 8;                // SEC pide no pasar de 10 pedidos por segundo
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

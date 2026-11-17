@@ -97,6 +97,21 @@ describe("insiderSummary", () => {
     expect(s.sellUSD).toBe(50_000);
   });
 
+  it("una 4/A o un grupo de dueños que repite la operación no la duplica", () => {
+    const original = parseForm4(doc("CFO C", "CFO", [tx("S", 20000, 50)]));
+    const amended = parseForm4(doc("CFO C", "CFO", [tx("S", 20000, 50)]));
+    expect(insiderSummary([original, amended], "2026-11-17").sellUSD).toBe(1_000_000);
+    const fund = [parseForm4(doc("Fund LP", "", [tx("P", 10000, 50)])), parseForm4(doc("Fund GP LLC", "", [tx("P", 10000, 50)])), parseForm4(doc("Manager", "", [tx("P", 10000, 50)]))];
+    const s = insiderSummary(fund, "2026-11-17");
+    expect(s.buyUSD).toBe(500_000);
+    expect(s.uniqueInsiders).toBe(1);
+  });
+
+  it("con `since` ignora operaciones viejas que trae una 4/A reciente", () => {
+    const f = parseForm4(doc("A", "", [tx("P", 1000, 50, "2026-03-01"), tx("P", 100, 50, "2026-11-01")]));
+    expect(insiderSummary([f], "2026-11-17", null, "2026-08-19").buyUSD).toBe(5_000);
+  });
+
   it("una compra de ejecutivo bajo $500K no cuenta como calidad", () => {
     expect(insiderSummary([parseForm4(doc("A", "CEO", [tx("P", 100, 50)]))], "2026-11-17").topExecBuy).toBe(0);
   });

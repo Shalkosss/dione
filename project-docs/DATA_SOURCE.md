@@ -1,5 +1,13 @@
 # DATA SOURCE
 
+[CAMBIOS 2026-11-17 (Fase 3, ítem 11): `/api/quote` sale de Yahoo chart v8
+sin key (Finnhub solo de respaldo); ya no trae `marketCap`, `logo` ni
+`weburl`, y `sector` desaparece (para sector usar `gicsSector` del screener).
+Insiders desde el Form 4 de SEC EDGAR. Finnhub queda opcional, solo para
+recomendaciones de analistas. Nuevos: `/api/scan`, `/api/sectors` (con
+`spyWeights`, pesos sectoriales del S&P 500 de SSGA), `/api/regime`,
+`/api/events?recent=1`. Lista completa y vigente en `CLAUDE.md`.]
+
 [CAMBIOS 2026-10-12 (verificado en vivo contra el código y los endpoints):
 campo de sector en `/api/quote` se llama `sector` (mapea finnhubIndustry);
 ticker inexistente → HTTP 404 (no ceros); ventana unificada 09-11 UTC;
@@ -22,14 +30,14 @@ DIONE NO usa web search para data de la app. Llama los endpoints directamente.
 
 | Endpoint | Fuente | Cache | Devuelve |
 |---|---|---|---|
-| `GET /api/quote/[ticker]` | Finnhub | **30s** | `ticker, fetchedAt, price, change, changePct` (**FRACCIÓN**: 0.04 = 4%), `high, low, open, prevClose, timestamp` (ms), `name, sector` (= finnhubIndustry), `currency, exchange, marketCap` (**MILLONES USD**), `logo, weburl`. Ticker inexistente → **404** |
+| `GET /api/quote/[ticker]` | Yahoo chart v8 (Finnhub de respaldo si hay key) | **30s** | `ticker, fetchedAt, price, change, changePct` (**FRACCIÓN**: 0.04 = 4%), `high, low, open, prevClose, timestamp` (ms), `name, currency, exchange, source`. Ticker inexistente → **404** |
 | `GET /api/candles/[ticker]?period1=&period2=&interval=1d` | Yahoo v8 proxy | **1h** | `chart.result[0]` con OHLCV + **adjclose**. `period1`/`period2` se validan como enteros |
 | `GET /api/screener?mode=&capMin=&capMax=&minScore=&sort=&limit=&includeFailed=&includeBorderline=` | Supabase snapshot | **5min** | gems con preScore + technicalScore v3 + comboScore + Altman + Piotroski + sector + gate. Modos: `fundamental` (500M-200B), `technical` (300M-50B), `combo` (1B-100B), `gems` (300M-2B). `includeBorderline=true` agrega clave `borderline` con candidatos de divergencia |
 | `GET /api/smart-money?ticker=&minScore=&limit=` | Supabase snapshot smart-money | **10min** | Overview: `{ meta, results: [{ symbol, score, breakdown, insider, analyst }] }`. Con `?ticker=`: `{ meta, ticker, result }` o 404 si está fuera del top 100 por comboScore (+ override `SMART_MONEY_SYMBOLS`). 503 si no hay snapshot |
 | `GET /api/healthz` | Supabase meta | no-store | `{ ok, degraded, fundamental: { updatedAt, ageHours, stale, gatePassers, withSector }, technical: { updatedAt, ageHours, stale, scored, attempted, degradedRunFlag }, thresholds }`. 200 / 200+degraded / 503 (umbral 26h). **Llamar primero en cualquier scan** |
 | `GET /api/cron/refresh-gems` | EDGAR + Finnhub → Supabase | — | cron 09:00 UTC, `CRON_SECRET` |
 | `GET /api/cron/refresh-technical` | Yahoo candles → Supabase merge | — | cron 10:00 UTC, `CRON_SECRET` |
-| `GET /api/cron/refresh-smart-money` | Finnhub insider+recs → Supabase | — | cron 11:00 UTC, `CRON_SECRET` |
+| `GET /api/cron/refresh-smart-money` | Form 4 de EDGAR (+ recomendaciones de Finnhub si hay key) → Supabase | — | cron 11:00 UTC, `CRON_SECRET` |
 
 ### NO EXISTEN (documentados en versiones viejas, no llamar):
 `/api/portfolio`, `/api/log-thesis`, `/api/get-performance`, `/api/forward-portfolio`, `/api/risk`, `/api/screener?mode=short`.
@@ -39,12 +47,10 @@ DIONE NO usa web search para data de la app. Llama los endpoints directamente.
 ## Convenciones de data
 
 1. **`adjclose` SIEMPRE, `close` NUNCA** para cálculos multi-mes.
-2. **Market cap viene en DOS unidades distintas**:
-   - `/api/quote` → **MILLONES de USD**
-   - `/api/screener` → dólares absolutos
+2. **Market cap**: solo en `/api/screener`, en dólares absolutos. `/api/quote` ya no lo trae.
 3. **`changePct` viene en FRACCIÓN** (0.04 = 4%, NO 4.0).
-4. **`sector` de `/api/quote` es el `finnhubIndustry` de Finnhub** (NO GICS L1). En el screener, `sector` es heterogéneo (Finnhub o SIC de SEC); para GICS L1 usar `gicsSector` (poblado en ~60% del snapshot, ver `meta.withGics`).
-5. `/api/quote` devuelve **HTTP 404** si el ticker no existe (Finnhub manda ceros; el endpoint los convierte en 404).
+4. Para sector usar siempre `gicsSector` del screener (GICS L1). El campo `sector` es heterogéneo (Finnhub o SIC de SEC).
+5. `/api/quote` devuelve **HTTP 404** si ni Yahoo ni Finnhub tienen el ticker.
 
 ### Protocolo de candles (obligatorio antes de cualquier indicador técnico)
 

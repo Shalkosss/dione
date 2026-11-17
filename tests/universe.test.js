@@ -122,6 +122,13 @@ describe("gate con deuda sin tag", () => {
     expect(qualityGate(bad).reasons.join()).toMatch(/largo plazo/);
   });
 
+  it("solo deuda corriente y sin techo calculable: rechaza en vez de usar la parte visible", () => {
+    const unbalanced = computeMetrics("X", { ...base, liab: 10, std: 5 });
+    expect(unbalanced.debtPartial).toBe(true);
+    expect(unbalanced.debtToEquityMax).toBeNull();
+    expect(qualityGate(unbalanced).pass).toBe(false);
+  });
+
   it("solo deuda de largo plazo tageada: la corriente se toma como cero", () => {
     const f = computeMetrics("X", { ...base, assets: 400, liab: 300, ltd: 50 });
     expect(f.debtPartial).toBe(false);

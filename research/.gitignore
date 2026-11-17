@@ -1,0 +1,5 @@
+# Entorno de Python y datos bajados: se regeneran con los scripts.
+.venv/
+**/data/
+**/*.log
+**/__pycache__/

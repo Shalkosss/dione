@@ -1,5 +1,11 @@
 # SMART MONEY
 
+[CAMBIOS 2026-11-17: insiders desde el Form 4 de SEC EDGAR, sin key. Solo
+cuentan compras (P) y ventas (S) en mercado abierto, y solo Form 4 cuyo
+emisor es la propia empresa; las asignaciones, opciones y retenciones no
+suman. Analistas por Finnhub solo si hay key (sin ella `analyst` es null y
+el drift vale 0). El universo es el top 100 por preScore, no por comboScore.]
+
 [CAMBIOS 2026-10-12: `/smart-money` overview marcado LIVE (cron
 `refresh-smart-money` 11:00 UTC + endpoint `/api/smart-money`, verificado
 HTTP 200). Alineado con COMMANDS_status y DATA_SOURCE. Agregada tabla de
@@ -15,8 +21,8 @@ con metodología tiene alpha real (~6-10% anual en insider clusters,
 
 | Comando | Hoy | Por qué |
 |---|---|---|
-| `/smart-money TICKER` | ✅ AUTO (parcial) | `GET /api/smart-money?ticker=TICKER` → `{ meta, ticker, result: { score, breakdown, insider, analyst } }`. 404 si el ticker está fuera del top 100 por comboScore (agregarlo a env `SMART_MONEY_SYMBOLS`) — en ese caso, Finnhub directo `/stock/insider-transactions` + `/stock/recommendation`. 13F, dark pool y SI: paste Bloomberg |
-| `/smart-money` (overview) | ✅ AUTO | `GET /api/smart-money?limit=10&minScore=0` → top N por score. Cron `refresh-smart-money` 11:00 UTC, top 100 gate-passers por comboScore + override. Cache 10 min. 503 si el snapshot no existe |
+| `/smart-money TICKER` | ✅ AUTO (parcial) | `GET /api/smart-money?ticker=TICKER` → `{ meta, ticker, result: { score, breakdown, insider, analyst } }`. 404 si el ticker está fuera del top 100 por preScore (agregarlo a env `SMART_MONEY_SYMBOLS`) — en ese caso, Form 4 directo en EDGAR. 13F, dark pool y SI: paste Bloomberg |
+| `/smart-money` (overview) | ✅ AUTO | `GET /api/smart-money?limit=10&minScore=0` → top N por score. Cron `refresh-smart-money` 11:00 UTC, top 100 gate-passers por preScore + override. Cache 10 min. 503 si el snapshot no existe |
 
 El snapshot solo cubre insider + analyst drift (componentes Form 4 y
 analyst del score). Para el SM Score completo hay que sumar 13F, dark

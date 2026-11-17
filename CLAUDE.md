@@ -1,7 +1,7 @@
 # CLAUDE.md — Contexto del proyecto DIONE WEB
 
 Brief para Claude Code. Se lee solo al abrir el proyecto. Actualizarlo cuando
-cambie una decisión o el estado real del repo. Última revisión: 16-nov-2026.
+cambie una decisión o el estado real del repo. Última revisión: 17-nov-2026.
 
 ---
 
@@ -53,7 +53,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `tests/` | Tests de vitest |
 | `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-backfill-check`) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
-| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`) |
+| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
 
 ## PÁGINAS (módulos de la terminal)
 
@@ -189,8 +189,10 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 2. **Métricas de desempeño, no VaR**: alfa, information ratio y máxima caída
    (`src/lib/perf.js`). La pantalla avisa cuando hay menos de 60 sesiones.
 3. **Sectores con look-through**: VOO, SPY, IVV, VTI y QQQ se abren en sus
-   sectores. Los pesos del S&P 500 en `src/lib/sectors.js` son aproximados y
-   se actualizan a mano.
+   sectores. Los pesos del S&P 500 salen cada día de la ficha de SPY en SSGA
+   (`lib/spyWeights.js`, cron `refresh-technical`, `spyWeights` en
+   `/api/sectors`). Los de `src/lib/sectors.js` son solo respaldo; los de QQQ
+   siguen siendo aproximados.
 4. **Reglas de inversión**: manda `project-docs/MANDATE.md`. Los rangos por
    tramo y los topes están en `src/lib/sectors.js` (`mandateChecks`). El
    tamaño sugerido de la boleta es 1% de la cuenta dividido por el stop.
@@ -203,6 +205,12 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    de deuda en XBRL y su balance cuadra, pasivos/patrimonio se usa como techo
    del D/E (la deuda no puede superar a los pasivos). Pasa el gate solo si ese
    techo ya es menor a 2 (`debtUntagged` en el snapshot). No se asume deuda cero.
+   Lo mismo si solo tagea deuda corriente y no la de largo plazo (`debtPartial`):
+   casi siempre significa que la de largo plazo está bajo un tag que no leemos.
+   Si falta solo la corriente, se toma como cero (lo normal es que no tenga).
+8. **Diversidad del pool** (17-nov-2026): máximo 40% de las tesis vivas en un
+   mismo sector o tema (`poolDiversity` en `lib/thesisStats.js`, campo opcional
+   `theme` del bloque). Se evalúa desde 3 tesis vivas. Solo avisa, no bloquea.
 7. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
    módulos numerados, cinta de precios y barra de estado; negro con acento
    azul, esquinas rectas, tema claro opcional. Los colores son variables CSS en `src/index.css`;
@@ -232,8 +240,10 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 
 - Rotar la key de Finnhub (estuvo en texto plano en un documento ya borrado).
 - Aplicar `migrations/003_transactions.sql` en Supabase (sin ella el libro queda solo en el navegador).
-- Pesos sectoriales del S&P 500 desde una fuente real (Fase 2.3).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
-- Gate de deuda: si una empresa etiqueta solo parte de su deuda en XBRL, la otra parte cuenta como 0 y el D/E sale subestimado.
+- Gate de deuda: si solo falta la deuda corriente se toma como cero; una empresa que la tenga bajo un tag no leído sale con D/E algo subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
-- `README_HIDDEN_GEMS.md` está duplicado en la raíz y en `project-docs/`.
+- Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
+- Regla 8 del tracker (bandera de sector): `/api/sectors` ya existe, pero la lista de sobreponderados de `/macro` no llega a la web.
+- Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 está en `research/pead_2026_11/`.
+- Fase 5 (ML) queda condicionada a que la Fase 4 encuentre features con contenido.
