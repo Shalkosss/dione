@@ -50,7 +50,8 @@ describe("waitlistReason", () => {
     expect(waitlistReason({ roe: 0.02 }, { pass: false, reasons: ["ROE 2.0% ≤ 10%"] })).toBeNull();
     expect(waitlistReason({ debtToEquity: 2.3 }, { pass: false, reasons: ["D/E 2.30 ≥ 2"] })).toBe("D/E cerca de 2");
     expect(waitlistReason({ debtToEquityMax: 2.2, debtUntagged: true }, { pass: false, reasons: ["D/E 2.20 ≥ 2 (techo)"] })).toBe("D/E cerca de 2");
-    expect(waitlistReason({ opMargin: 0.1 }, { pass: false, reasons: ["FCF TTM no positivo"] })).toMatch(/FCF/);
+    expect(waitlistReason({ opMargin: 0.1, fcfPerShare: -5 }, { pass: false, reasons: ["FCF TTM no positivo"] })).toMatch(/FCF/);
+    expect(waitlistReason({ opMargin: 0.1, fcfPerShare: null }, { pass: false, reasons: ["FCF sin dato"] })).toBeNull();
   });
   it("dos reglas, Altman o gate aprobado no son lista de espera", () => {
     expect(waitlistReason({ roe: 0.09 }, { pass: false, reasons: ["ROE 9%", "FCF TTM no positivo"] })).toBeNull();

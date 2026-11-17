@@ -24,7 +24,22 @@ const SORTS = [
   { key: "roe", label: "ROE" },
   { key: "fcfYield", label: "FCF yield" },
   { key: "dollarVolume", label: "Volumen $" },
+  { key: "trendScore", label: "Tendencia" },
 ];
+const TREND_TONE = { "EN ZONA": C.pos, ALCISTA: C.pos, EXTENDIDA: C.amber, RETROCESO: C.amber, RECUPERANDO: C.accent, ROTA: C.neg };
+
+// Score de tendencia. Fuera del universo de calidad lleva "≈": el v4 se validó
+// en large caps del S&P 500 y su percentil se mide contra ese universo.
+function TrendCell({ row }) {
+  if (row.trendScore == null) return <span style={{ color: C.muted }}>—</span>;
+  const outside = (row.trendFlags || []).includes("fuera_validado");
+  return (
+    <span title={outside ? "Fuera del universo validado: percentil contra el universo de calidad" : "Universo de calidad"}>
+      <span style={{ color: TREND_TONE[row.trendLabel] ?? C.text }}>{row.trendLabel}</span>{" "}
+      <span style={{ color: C.muted }}>{outside ? "≈" : ""}{row.trendScore}</span>
+    </span>
+  );
+}
 const PAGE = 50;
 
 const fmtPct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1)}%`);
@@ -116,11 +131,11 @@ export default function UniverseView() {
       <Panel title="MERCADO COMPLETO · NYSE Y NASDAQ" right={data ? `${data.total} resultados` : loading ? "cargando…" : ""}>
         {rows.length ? (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                  {["Ticker", "Empresa", "Bolsa", "Sector", "Precio", "Cap.", "preScore", "ROE", "FCF yield", "Gate"].map((h) => (
-                    <th key={h} style={{ ...th, textAlign: h === "Empresa" || h === "Gate" || h === "Sector" ? "left" : "right" }}>{h}</th>
+                  {["Ticker", "Empresa", "Bolsa", "Sector", "Precio", "Cap.", "preScore", "ROE", "FCF yield", "Tendencia", "Gate"].map((h) => (
+                    <th key={h} style={{ ...th, textAlign: ["Empresa", "Gate", "Sector", "Tendencia"].includes(h) ? "left" : "right" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -131,7 +146,10 @@ export default function UniverseView() {
                       <Link to={`/chart?t=${r.symbol}`} style={{ color: C.accent, fontWeight: 700 }}>{r.symbol}</Link>
                     </td>
                     <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</td>
-                    <td style={{ ...td, textAlign: "right", color: C.muted }}>{r.exchange}</td>
+                    <td style={{ ...td, textAlign: "right", color: C.muted, whiteSpace: "nowrap" }}>
+                      {r.exchange}
+                      {r.foreign && <span title={`Fundamentales ${r.taxonomy} en ${r.currency}, cierre ${r.fyEnd}. Sin capitalización: en un ADR precio × acciones no sirve.`} style={{ marginLeft: 5, color: C.amber }}>{r.currency}</span>}
+                    </td>
                     <td style={{ ...td, color: C.muted, whiteSpace: "nowrap" }}>{r.gicsSector ?? "—"}</td>
                     <td style={{ ...td, textAlign: "right" }} title={r.priceStale ? "precio de la corrida anterior" : undefined}>
                       {fmtPrice(r.price)}{r.priceStale ? "*" : ""}
@@ -140,6 +158,7 @@ export default function UniverseView() {
                     <td style={{ ...td, textAlign: "right" }}>{r.preScore ?? "—"}</td>
                     <td style={{ ...td, textAlign: "right" }}>{fmtPct(r.roe)}</td>
                     <td style={{ ...td, textAlign: "right" }}>{fmtPct(r.fcfYield)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}><TrendCell row={r} /></td>
                     <td style={{ ...td, whiteSpace: "nowrap" }} title={r.staleFundamentals ? "fundamentales del año anterior" : undefined}>
                       <GateCell row={r} />{r.staleFundamentals ? <span style={{ color: C.muted }}> · año ant.</span> : null}
                     </td>
@@ -164,8 +183,10 @@ export default function UniverseView() {
 
       <div style={{ fontSize: 11, color: C.muted, marginTop: 10, lineHeight: 1.5 }}>
         Contexto, no candidatas: el descubrimiento del método sigue en la vista de calidad (máx. 3 por sector).
-        Lista de espera = falla una sola regla del gate y por poco. Las extranjeras con IFRS (ASML, SAP, Toyota) no
-        tienen fundamentales en EDGAR y figuran sin gate. * = precio de la corrida anterior.
+        Lista de espera = falla una sola regla del gate y por poco. Extranjeras (moneda en ámbar): fundamentales de
+        companyfacts en su moneda, sin capitalización ni FCF yield porque en un ADR precio × acciones no sirve.
+        Tendencia con ≈ = fuera del universo validado (small caps y fuera del gate): el percentil se mide contra el
+        universo de calidad y no cambia sus scores. * = precio de la corrida anterior.
       </div>
     </div>
   );

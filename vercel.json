@@ -17,6 +17,14 @@
       "destination": "/api/cron/refresh-gems?part=universe"
     },
     {
+      "source": "/api/cron/refresh-universe-tech-1",
+      "destination": "/api/cron/refresh-technical?part=1"
+    },
+    {
+      "source": "/api/cron/refresh-universe-tech-2",
+      "destination": "/api/cron/refresh-technical?part=2"
+    },
+    {
       "source": "/api/universe",
       "destination": "/api/screener?mode=universe"
     },
@@ -41,6 +49,14 @@
     {
       "path": "/api/cron/refresh-universe",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-universe-tech-1",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-universe-tech-2",
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/refresh-theses",

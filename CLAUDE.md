@@ -118,6 +118,7 @@ función existente.
 | 10:00 | `refresh-technical` | Velas de Yahoo para todos los gate-passers (más SPY y los 11 ETFs): `trendScore` v4 (`lib/trendScore.js`) y `technicalScore` v3 histórico. Corta a los 210 s; si falla más del 30% no pisa los scores previos |
 | 11:00 | `refresh-smart-money` | Insiders desde el Form 4 de EDGAR (top 100, compras y ventas en mercado abierto; corta a los 110 s), analistas por Finnhub solo con key, y barrido de resultados de las últimas 5 sesiones |
 | 12:00 | `refresh-universe` | Rewrite a `refresh-gems?part=universe` (`lib/universeRefresh.js`): lista de NYSE y Nasdaq de la SEC, fundamentales EDGAR, precios por Yahoo spark (20 por pedido) y sectores del cache. No toca el snapshot `latest` |
+| 13:00 y 14:00 | `refresh-universe-tech-1` y `-2` | Rewrites a `refresh-technical?part=1` y `?part=2` (`lib/universeTechRefresh.js`): tendencia v4 de las invertibles fuera del snapshot de calidad, mitad cada una, en filas `universe_tech_1` y `_2`. El percentil se mide contra el universo de calidad sin entrar en él |
 | 22:00 | `refresh-theses` | Tracker: reproduce cada tesis con velas de Yahoo. Sin LLM |
 
 Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
@@ -126,7 +127,7 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 
 | Tabla | Contenido | Quién escribe |
 |---|---|---|
-| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB, `weekly` con el ranking de esta semana y la anterior, `universe` con NYSE y Nasdaq completos y `events` con el barrido de resultados | `refresh-gems`, `refresh-technical`, `refresh-smart-money` |
+| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB, `weekly` con el ranking de esta semana y la anterior, `universe` con NYSE y Nasdaq completos, `universe_tech_1/2` con su tendencia, `foreign_facts` con el cache de companyfacts y `events` con el barrido de resultados | `refresh-gems`, `refresh-technical`, `refresh-smart-money` |
 | `smart_money_snapshot` | Una fila `latest` | `refresh-smart-money` |
 | `symbol_metadata` | Cache de sector e industria (`001_symbol_metadata.sql`) | `lib/finnhub.js` |
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
@@ -225,8 +226,19 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    `/api/scan` y la vista de calidad no cambian. Una fila por CIK, sin
    preferentes, warrants ni fondos. Si el frame anual de EDGAR no trae a una
    empresa (pasó con Broadcom y Ford), se usan los datos del año anterior con
-   `staleFundamentals: true`, también en el gate del scan. Las extranjeras con
-   IFRS (ASML, SAP) no tienen fundamentales en EDGAR y figuran sin gate.
+   `staleFundamentals: true`, también en el gate del scan.
+   Emisores sin frames USD (IFRS como NU, TSM y SAP, o us-gaap en otra moneda
+   como ASML): fundamentales de `companyfacts` en su moneda (`lib/companyFacts.js`,
+   cache de 30 días en la fila `foreign_facts`). Ratios y gate sí; capitalización,
+   FCF yield y P/E no, porque en un ADR precio × acciones da mal (un ADR de TSM
+   son 5 acciones). Su piso de invertible es volumen diario ≥ $5M. Si informan el
+   capex con un concepto propio (Toyota, Shell), el gate dice "FCF sin dato".
+10. **Tendencia fuera del gate** (17-nov-2026): el percentil de momentum de las
+   empresas del universo se mide contra el universo de calidad sin sumarse a
+   él (`percentileAgainst`), así los trend scores de calidad no cambian. Llevan
+   la bandera `fuera_validado` (en pantalla, "≈"): el v4 se validó en large caps.
+   La amplitud del mercado completo sale en `/api/regime` como `breadthMarket`
+   (calidad más las tandas del día); `breadthUniverse` sigue siendo solo calidad.
 
 ---
 
@@ -252,7 +264,8 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Earnings no cubre emisores extranjeros (6-K), como NU.
 - Gate de deuda: si solo falta la deuda corriente se toma como cero; una empresa que la tenga bajo un tag no leído sale con D/E algo subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
-- Universo paso 2: técnico de las que no pasan el gate en tandas propias (filas separadas, horas distintas), percentil contra el universo de calidad y amplitud del régimen sobre el mercado completo.
+- Universo: las extranjeras no tienen capitalización (ratio de ADR). Para tenerla haría falta el ratio ADS/acción por emisor o una fuente de market cap.
+- El cache de `companyfacts` se completa en varios días (unas 400 empresas por corrida).
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
 - Regla 8 del tracker (bandera de sector): `/api/sectors` ya existe, pero la lista de sobreponderados de `/macro` no llega a la web.
 - Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 (drift post-earnings) está hecho: en el S&P 500 no hay señal explotable (`project-docs/PEAD_2026-11.md`), así que `/api/events` es contexto y no ranking.

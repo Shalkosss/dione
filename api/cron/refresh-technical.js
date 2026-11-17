@@ -15,6 +15,7 @@ import { readSnapshot, writeSnapshot } from '../../lib/store.js';
 import { fetchCandlesBatch } from '../../lib/yahoo.js';
 import { buildTechnicalUpdates, BENCHMARKS, marketSummary } from '../../lib/trendRefresh.js';
 import { fetchSpyWeights } from '../../lib/spyWeights.js';
+import { refreshUniverseTech } from '../../lib/universeTechRefresh.js';
 
 export const config = { maxDuration: 300 };
 
@@ -29,6 +30,18 @@ export default async function handler(req, res) {
   }
 
   const t0 = Date.now();
+
+  // ?part=1|2 (crons 13:00 y 14:00 UTC): tendencia del universo NYSE/Nasdaq
+  // fuera del gate, en filas propias. No toca el snapshot de calidad.
+  if (req.query?.part) {
+    try {
+      return res.status(200).json({ ok: true, ...(await refreshUniverseTech(Number(req.query.part), { t0 })) });
+    } catch (e) {
+      console.error('[refresh-technical] universo', e);
+      return res.status(500).json({ error: e.message, ms: Date.now() - t0 });
+    }
+  }
+
   try {
     const snap = await readSnapshot();
     if (!snap?.gems) {

@@ -41,9 +41,14 @@
 //                                   (fila 'universe', cron 12:00 UTC). Parámetros
 //                                   en lib/marketUniverse.js (queryUniverse)
 
-import { readSnapshot, readRow } from '../lib/store.js';
+import { readSnapshot, readRow, readRowField } from '../lib/store.js';
 import { SCAN_MODES, buildScanResponse } from '../lib/scanApi.js';
-import { queryUniverse } from '../lib/marketUniverse.js';
+import { queryUniverse, withTrend } from '../lib/marketUniverse.js';
+import { UNIVERSE_TECH_PARTS } from '../lib/universeTech.js';
+
+const TECH_IDS = Array.from({ length: UNIVERSE_TECH_PARTS }, (_, i) => `universe_tech_${i + 1}`);
+// Una tanda que falla no tumba la respuesta: se sigue sin ella.
+const safe = (p) => p.catch((e) => { console.warn('[screener]', e.message); return null; });
 
 export const config = { maxDuration: 10 };
 
@@ -62,18 +67,22 @@ export default async function handler(req, res) {
       const snap = await readSnapshot();
       if (!snap?.gems) return res.status(503).json({ error: 'snapshot todavía no generado — corré /api/cron/refresh-gems' });
       const perSector = Math.max(1, Math.min(num(q.perSector, 3), 10));
+      const partMetas = mode === 'sectors' ? [] : (await Promise.all(TECH_IDS.map((id) => safe(readRowField(id, 'meta'))))).filter(Boolean);
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-      return res.status(200).json(buildScanResponse(snap, mode, { perSector }));
+      return res.status(200).json(buildScanResponse(snap, mode, { perSector, partMetas }));
     }
     if (mode === 'universe') {
       let row;
-      try { row = await readRow('universe'); } catch (e) {
+      let techRows = [];
+      try {
+        [row, ...techRows] = await Promise.all([readRow('universe'), ...TECH_IDS.map((id) => safe(readRow(id)))]);
+      } catch (e) {
         console.error('[screener] universe:', e.message);
         return res.status(500).json({ error: 'No se pudo leer el universo' });
       }
       if (!row?.rows) return res.status(503).json({ error: 'El universo todavía no se generó (cron refresh-universe, 12:00 UTC)' });
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800');
-      return res.status(200).json({ meta: row.meta, ...queryUniverse(row.rows, q) });
+      return res.status(200).json({ meta: row.meta, ...queryUniverse(withTrend(row.rows, techRows), q) });
     }
     const onlyMegacaps = q.megacap === '1' || q.megacap === 'true';
     const def = MODE_DEFAULTS[mode] || MODE_DEFAULTS.gems;

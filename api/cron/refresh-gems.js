@@ -122,6 +122,7 @@ export default async function handler(req, res) {
       const gate = p.outsideGate ? qualityGate(f) : { pass: true, reasons: [] };
       gems[p.ticker] = {
         symbol: p.ticker,
+        cik: p.cik,
         name: pr?.name ?? meta?.name ?? null,
         sector: meta?.sector ?? null,
         industry: meta?.industry ?? null,
