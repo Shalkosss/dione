@@ -14,7 +14,7 @@ dos cuentas: real USD 5.000 y paper trading USD 1.000.000.
 El research (los `/deep`, `/scan`, etc.) vive en un Claude Project aparte.
 Esta app hace tres cosas: precalcula el universo que ese research consume
 (screener, técnico, smart money), mide las tesis que emite (tracker) y
-optimiza el portafolio.
+mide la cartera contra el S&P 500.
 
 **Método**: los documentos están en `project-docs/` y el repo es la fuente
 única. Empezar por `project-docs/INDEX.md` (orden de lectura 1 a 7).

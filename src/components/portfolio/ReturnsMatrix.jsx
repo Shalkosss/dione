@@ -42,15 +42,20 @@ export default function ReturnsMatrix({ index, benchSeries, spyHistory }) {
   const rows = useMemo(() => {
     const spyAligned = benchSeries.find((b) => b.id === "spy")?.series || [];
     const spy = PERIODS.map(([, fn, aligned]) => fn(aligned ? spyAligned : spyHistory));
-    const make = (name, color, series, compare) => ({
-      name, color,
-      cells: PERIODS.map(([, fn], i) => {
-        const value = fn(series);
-        return { value, excess: compare && value != null && spy[i] != null ? value - spy[i] : null };
-      }),
-    });
-    const others = benchSeries.filter((b) => b.id !== "spy").map((b) => make(b.name, b.color, b.series, true));
-    return [make("Cartera", C.accent, index, true), { name: "S&P 500", color: C.spy, cells: spy.map((value) => ({ value, excess: null })) }, ...others];
+    // `from`: una referencia que arranca después que la cartera se compara contra
+    // el S&P 500 medido desde SU fecha de inicio, no desde la de la cartera.
+    const make = (id, name, color, series, from) => {
+      const own = from ? PERIODS.map(([, fn, aligned]) => fn(aligned ? spyAligned.filter((p) => p.date >= from) : spyHistory)) : spy;
+      return {
+        id, name, color,
+        cells: PERIODS.map(([, fn], i) => {
+          const value = fn(series);
+          return { value, excess: value != null && own[i] != null ? value - own[i] : null };
+        }),
+      };
+    };
+    const others = benchSeries.filter((b) => b.id !== "spy").map((b) => make(b.id, b.name, b.color, b.series, b.series[0]?.date));
+    return [make("port", "Cartera", C.accent, index, null), { id: "spy", name: "S&P 500", color: C.spy, cells: spy.map((value) => ({ value, excess: null })) }, ...others];
   }, [index, benchSeries, spyHistory]);
 
   const template = `92px repeat(${PERIODS.length}, minmax(58px, 1fr))`;
@@ -66,7 +71,7 @@ export default function ReturnsMatrix({ index, benchSeries, spyHistory }) {
             ))}
           </div>
           {rows.map((row) => (
-            <div key={row.name} style={{ display: "grid", gridTemplateColumns: template, gap: 4, marginBottom: 4, alignItems: "stretch" }}>
+            <div key={row.id} style={{ display: "grid", gridTemplateColumns: template, gap: 4, marginBottom: 4, alignItems: "stretch" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: mono, fontSize: 11, color: C.text, borderLeft: `3px solid ${row.color}`, paddingLeft: 8 }}>{row.name}</span>
               {row.cells.map((cell, i) => <Cell key={PERIODS[i][0]} value={cell.value} excess={cell.excess} />)}
             </div>

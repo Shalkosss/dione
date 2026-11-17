@@ -14,14 +14,19 @@ function buildRows(lines, sessions) {
   const window = Number.isFinite(sessions) ? port.slice(-(sessions + 1)) : port;
   if (window.length < 2) return [];
   const start = window[0].date;
+  const portBase = window[0].value;
+  const portAt = new Map(window.map((p) => [p.date, (p.value / portBase) * 100]));
   const maps = lines.map((l) => {
     const map = new Map(l.series.map((p) => [p.date, p.value]));
-    const base = map.get(start) ?? l.series.find((p) => p.date >= start)?.value;
-    return { id: l.id, map, base };
+    const first = l.series.find((p) => p.date >= start);
+    // Una línea que arranca después del inicio de la ventana parte del nivel
+    // que tenía la cartera ese día, no de 100 en medio del gráfico.
+    const anchor = map.has(start) || !first ? 100 : portAt.get(first.date) ?? 100;
+    return { id: l.id, map, base: map.get(start) ?? first?.value, anchor };
   });
   return window.map((p) => maps.reduce((row, m) => {
     const v = m.map.get(p.date);
-    return { ...row, [m.id]: v != null && m.base > 0 ? (v / m.base) * 100 : null };
+    return { ...row, [m.id]: v != null && m.base > 0 ? (v / m.base) * m.anchor : null };
   }, { date: p.date }));
 }
 

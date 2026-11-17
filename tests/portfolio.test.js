@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { accountState, validateOrder, closeOn, equityCurve, twrIndex, modelIndex, valuedPositions, parseWeights, formatWeights, ledgerIssues } from "../src/lib/ledger.js";
+import { accountState, validateOrder, closeOn, equityCurve, twrIndex, modelIndex, valuedPositions, parseWeights, formatWeights, ledgerIssues, validateInBook } from "../src/lib/ledger.js";
 import {
   dailyReturns, alignSeries, totalReturn, trailingReturn, ytdReturn, maxDrawdown, drawdownSeries,
   alphaBeta, trackingError, informationRatio, hitRate, sharpe, monthlyReturns, summarize,
@@ -69,6 +69,23 @@ describe("ledger: validación de órdenes", () => {
     const sell = { id: "2", date: "2026-01-05", side: "SELL", ticker: "NU", qty: 50, price: 12 };
     expect(ledgerIssues(5000, [...txs, sell])).toEqual([]);
     expect(ledgerIssues(5000, [sell])[0]).toMatch(/No se puede vender/);
+  });
+
+  it("una orden con fecha pasada no puede romper movimientos posteriores", () => {
+    const book = [
+      { id: "a", date: "2026-01-05", side: "BUY", ticker: "MU", qty: 10, price: 100 },
+      { id: "b", date: "2026-06-01", side: "SELL", ticker: "MU", qty: 10, price: 120 },
+    ];
+    // Vender las mismas 10 acciones en marzo dejaría la venta de junio sin acciones.
+    const sell = validateInBook(5000, book, { date: "2026-03-02", side: "SELL", ticker: "MU", qty: 10, price: 110 });
+    expect(sell.ok).toBe(false);
+    expect(sell.errors[0]).toMatch(/2026-06-01/);
+    // Una compra anterior que consume la caja de una compra posterior.
+    const cashBook = [{ id: "c", date: "2026-06-01", side: "BUY", ticker: "VOO", qty: 9, price: 500 }];
+    expect(validateInBook(5000, cashBook, { date: "2026-05-01", side: "BUY", ticker: "MU", qty: 45, price: 100 }).ok).toBe(false);
+    expect(validateInBook(5000, cashBook, { date: "2026-05-01", side: "BUY", ticker: "MU", qty: 5, price: 100 }).ok).toBe(true);
+    // Los errores de formato se informan igual que antes.
+    expect(validateInBook(5000, [], { date: "ayer", side: "BUY", ticker: "MU", qty: 1, price: 1 }).ok).toBe(false);
   });
 
   it("rechaza datos mal formados", () => {

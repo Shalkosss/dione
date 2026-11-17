@@ -1,5 +1,5 @@
 // src/lib/commands.js — Lógica de la paleta de comandos (Ctrl+K).
-// Funciones puras: arman y filtran la lista; la UI vive en CommandPalette.jsx.
+// Funciones puras: arman y filtran la lista; la UI vive en components/shell/CommandLine.jsx.
 
 const TICKER_RE = /^[A-Z][A-Z0-9.-]{0,9}$/;
 

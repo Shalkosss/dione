@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { C, mono, input, btn } from "../../theme.js";
 import { Panel } from "../Panel.jsx";
 import { useLedger } from "../../store/LedgerContext.jsx";
@@ -8,7 +8,11 @@ import { fetchSeries, daysSince } from "../../lib/priceHistory.js";
 import { UNIVERSE } from "../../lib/universe.js";
 import { money } from "../../lib/format.js";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Fecha local del usuario (no UTC): en Lima, de noche, toISOString ya da el día siguiente.
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const field = { ...input, textAlign: "left", padding: "7px 9px", fontSize: 12.5 };
 const labelStyle = { display: "block", fontFamily: mono, fontSize: 9.5, letterSpacing: "0.09em", color: C.muted, marginBottom: 3, textTransform: "uppercase" };
 const RISK_BUDGET = 0.01; // 1% de la cuenta por posición (MANDATE.md)
@@ -32,6 +36,7 @@ export default function TradeTicket({ nav, prefill }) {
   const [stopPct, setStopPct] = useState("10");
   const [quote, setQuote] = useState(null); // { close, date } o { missing: true }
   const [message, setMessage] = useState(null);
+  const symbolRef = useRef("");
 
   // Orden que llega desde la línea de comandos o desde el botón "vender" de una posición.
   useEffect(() => {
@@ -39,11 +44,13 @@ export default function TradeTicket({ nav, prefill }) {
     setSide(prefill.side || "BUY");
     setTicker(prefill.ticker || "");
     setQty(prefill.qty ? String(prefill.qty) : "");
-    setPrice("");
+    // Si el ticker es el mismo, la cotización no vuelve a pedirse: se conserva el precio.
+    if ((prefill.ticker || "").toUpperCase() !== symbolRef.current) setPrice("");
     setMessage(null);
   }, [prefill]);
 
   const symbol = ticker.trim().toUpperCase();
+  symbolRef.current = symbol;
   useEffect(() => setSector(knownSector(symbol)), [symbol]);
 
   // Cierre (sin ajustar) del día elegido, o el último disponible antes.

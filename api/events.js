@@ -17,6 +17,10 @@ import { extractEarnings, parseTickers } from '../lib/earningsEvents.js';
 export const config = { maxDuration: 30 };
 
 const CIK_TTL_MS = 12 * 60 * 60 * 1000;
+const BATCH_SIZE = 4;
+const BATCH_PAUSE_MS = 500;  // 4 pedidos cada medio segundo: por debajo de los 10/s que pide SEC
+const BUDGET_MS = 22000;     // se corta antes del maxDuration y se devuelve lo obtenido
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let cikCache = { at: 0, map: null };
 
 async function tickerCikMap() {
@@ -27,7 +31,8 @@ async function tickerCikMap() {
 }
 
 async function eventsFor(ticker, cikMap) {
-  const cik = cikMap.get(ticker);
+  // SEC escribe las clases con guion (BRK-B); en la web se escriben con punto (BRK.B).
+  const cik = cikMap.get(ticker) ?? cikMap.get(ticker.replace('.', '-'));
   if (cik == null) return { ticker, name: null, events: [], note: 'No figura en SEC EDGAR (ETF, índice o ticker extranjero)' };
   try {
     const { name, recent } = await fetchRecentFilings(cik);
@@ -37,7 +42,7 @@ async function eventsFor(ticker, cikMap) {
     return { ticker, name, events, note };
   } catch (e) {
     console.error('[events]', ticker, e.message);
-    return { ticker, name: null, events: [], note: 'EDGAR no respondió para este ticker' };
+    return { ticker, name: null, events: [], note: 'EDGAR no respondió para este ticker', failed: true };
   }
 }
 
@@ -47,17 +52,30 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'método no permitido' });
   }
   const tickers = parseTickers(req.query.tickers);
+  const requested = parseTickers(req.query.tickers, 500).length;
   if (!tickers.length) return res.status(400).json({ success: false, error: 'Falta ?tickers=AAA,BBB (máximo 25)' });
 
   try {
+    const startedAt = Date.now();
     const cikMap = await tickerCikMap();
     const data = [];
-    // De a 4 a la vez: SEC pide menos de 10 pedidos por segundo.
-    for (let i = 0; i < tickers.length; i += 4) {
-      data.push(...await Promise.all(tickers.slice(i, i + 4).map((t) => eventsFor(t, cikMap))));
+    for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+      if (Date.now() - startedAt > BUDGET_MS) {
+        // Sin tiempo: los que faltan vuelven marcados, en vez de que Vercel corte todo.
+        data.push(...tickers.slice(i).map((ticker) => ({ ticker, name: null, events: [], note: 'Sin tiempo para consultarlo: reintentá', failed: true })));
+        break;
+      }
+      if (i > 0) await sleep(BATCH_PAUSE_MS);
+      data.push(...await Promise.all(tickers.slice(i, i + BATCH_SIZE).map((t) => eventsFor(t, cikMap))));
     }
-    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=21600');
-    return res.status(200).json({ success: true, data, meta: { total: data.length, source: 'SEC EDGAR 8-K ítem 2.02' } });
+    const incomplete = data.filter((d) => d.failed).length;
+    // Una respuesta con fallos transitorios no se guarda en el CDN: al recargar se reintenta.
+    res.setHeader('Cache-Control', incomplete ? 'no-store' : 's-maxage=3600, stale-while-revalidate=21600');
+    return res.status(200).json({
+      success: true,
+      data: data.map(({ failed, ...rest }) => rest),
+      meta: { total: data.length, incomplete, omitted: Math.max(0, requested - tickers.length), source: 'SEC EDGAR 8-K ítem 2.02' },
+    });
   } catch (e) {
     console.error('[events]', e);
     return res.status(502).json({ success: false, error: 'No se pudo consultar SEC EDGAR' });

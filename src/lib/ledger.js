@@ -81,6 +81,16 @@ export function ledgerIssues(initialCash, transactions) {
   });
 }
 
+// Valida una orden nueva contra el libro COMPLETO, no solo contra el estado a
+// su fecha: una orden con fecha pasada no puede dejar sin acciones o sin caja a
+// un movimiento posterior. Es la validación que se usa antes de guardar.
+export function validateInBook(initialCash, transactions, order) {
+  const own = validateOrder(initialCash, transactions, order);
+  if (!own.ok) return own;
+  const errors = ledgerIssues(initialCash, [...transactions, order]).map((e) => `Rompe un movimiento posterior → ${e}`);
+  return { ok: errors.length === 0, errors };
+}
+
 // Último cierre conocido en o antes de `date`. `series` viene ordenada por fecha.
 export function closeOn(series, date) {
   if (!series?.length) return null;
@@ -96,12 +106,14 @@ export function closeOn(series, date) {
 // { ticker: [{ date, close }] }. Si falta precio se usa el costo de la posición.
 export function equityCurve(initialCash, transactions, prices, dates) {
   const sorted = [...transactions].sort(byDate);
-  return dates.map((date) => {
+  return dates.map((date, i) => {
     const state = accountState(initialCash, sorted, date);
     const invested = Object.entries(state.positions).reduce(
       (sum, [ticker, p]) => sum + p.qty * (closeOn(prices[ticker], date) ?? p.cost), 0,
     );
-    const flow = sorted.filter((t) => t.date === date).reduce((s, t) => s + externalFlow(t), 0);
+    // Un aporte fechado en fin de semana o feriado se imputa a la sesión siguiente.
+    const inWindow = (t) => (i === 0 ? t.date === date : t.date > dates[i - 1] && t.date <= date);
+    const flow = sorted.filter(inWindow).reduce((s, t) => s + externalFlow(t), 0);
     return { date, value: state.cash + invested, cash: state.cash, flow };
   });
 }

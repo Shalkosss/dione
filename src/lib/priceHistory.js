@@ -17,9 +17,11 @@ async function download(ticker, calDays) {
     const result = (await res.json())?.chart?.result?.[0];
     const quote = result?.indicators?.quote?.[0];
     if (!result?.timestamp || !quote) return [];
-    const adj = result.indicators?.adjclose?.[0]?.adjclose;
+    // `close` es el cierre de Yahoo: ajustado por splits pero NO por dividendos.
+    // Es el mismo precio al que se registran las órdenes, así que cartera y
+    // benchmarks quedan medidos en la misma base (retorno de precio).
     return result.timestamp
-      .map((ts, i) => ({ date: isoDate(ts), close: adj?.[i] ?? quote.close?.[i], rawClose: quote.close?.[i], high: quote.high?.[i], low: quote.low?.[i], volume: quote.volume?.[i] }))
+      .map((ts, i) => ({ date: isoDate(ts), close: quote.close?.[i], rawClose: quote.close?.[i], high: quote.high?.[i], low: quote.low?.[i], volume: quote.volume?.[i] }))
       .filter((c) => Number.isFinite(c.close) && c.close > 0);
   } catch {
     return []; // sin red o ticker desconocido: la página muestra "sin datos"
@@ -28,12 +30,16 @@ async function download(ticker, calDays) {
   }
 }
 
-// Serie diaria [{ date, close, rawClose, high, low, volume }]. `close` es el ajustado.
+// Serie diaria [{ date, close, rawClose, high, low, volume }]. No se guardan en
+// cache las descargas vacías: así un fallo de red se puede reintentar enseguida.
 export function fetchSeries(ticker, calDays = 400) {
   const key = `${ticker}:${calDays}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.promise;
-  const promise = download(ticker, calDays);
+  const promise = download(ticker, calDays).then((series) => {
+    if (!series.length) cache.delete(key);
+    return series;
+  });
   cache.set(key, { at: Date.now(), promise });
   return promise;
 }

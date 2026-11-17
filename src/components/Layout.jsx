@@ -48,7 +48,11 @@ export default function Layout({ children }) {
       setFocusSignal((n) => n + 1);
       return;
     }
-    const target = e.altKey && NAV_ITEMS.find((n) => n.key === e.key);
+    // Alt+número no se toma mientras se escribe ni desde el teclado numérico
+    // (en Windows, Alt+teclado numérico escribe caracteres especiales).
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || "") || e.target?.isContentEditable;
+    const digit = String(e.code || "").startsWith("Digit") ? e.code.slice(5) : null;
+    const target = e.altKey && !e.ctrlKey && !typing && digit && NAV_ITEMS.find((n) => n.key === digit);
     if (target) { e.preventDefault(); navigate(target.to); }
   }, [navigate]);
 

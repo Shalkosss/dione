@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { validateOrder, ledgerIssues } from "../lib/ledger.js";
+import { validateInBook, ledgerIssues } from "../lib/ledger.js";
 
 /* Portafolio ficticio: dos cuentas (paper y real) con su libro de órdenes, y
    las carteras de referencia para comparar. Vive en localStorage del navegador.
@@ -31,7 +31,12 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
     const saved = JSON.parse(raw);
-    return { ...DEFAULT_STATE, ...saved, accounts: { ...DEFAULT_STATE.accounts, ...saved.accounts } };
+    // Un dato con forma inesperada dejaría la app en blanco: se valida antes de usarlo.
+    const accounts = { ...DEFAULT_STATE.accounts, ...(saved?.accounts || {}) };
+    const valid = Object.values(accounts).every((a) => a && a.initialCash > 0 && Array.isArray(a.transactions))
+      && accounts[saved?.active] && (saved.benchmarks == null || Array.isArray(saved.benchmarks));
+    if (!valid) return DEFAULT_STATE;
+    return { ...DEFAULT_STATE, ...saved, accounts };
   } catch {
     return DEFAULT_STATE; // dato corrupto o almacenamiento bloqueado: se empieza de cero
   }
@@ -50,18 +55,22 @@ export function LedgerProvider({ children }) {
 
   const setActive = useCallback((id) => setState((s) => (s.accounts[id] ? { ...s, active: id } : s)), []);
 
-  const updateAccount = useCallback((patch) => {
-    setState((s) => ({ ...s, accounts: { ...s.accounts, [s.active]: { ...s.accounts[s.active], ...patch(s.accounts[s.active]) } } }));
+  // Toda escritura va a la cuenta que se validó (`activeId` capturado), nunca a
+  // "la activa en ese momento": así un cambio de cuenta a mitad de una operación
+  // no puede hacer que se valide contra una cuenta y se escriba en otra.
+  const activeId = state.active;
+  const updateAccount = useCallback((id, patch) => {
+    setState((s) => ({ ...s, accounts: { ...s.accounts, [id]: { ...s.accounts[id], ...patch(s.accounts[id]) } } }));
   }, []);
 
-  // Devuelve { ok, errors }. Solo guarda si la orden es válida.
+  // Devuelve { ok, errors }. Solo guarda si la orden es válida contra el libro completo.
   const placeOrder = useCallback((order) => {
-    const check = validateOrder(account.initialCash, account.transactions, order);
+    const check = validateInBook(account.initialCash, account.transactions, order);
     if (!check.ok) return check;
     const tx = { ...order, id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
-    updateAccount((a) => ({ transactions: [...a.transactions, tx] }));
+    updateAccount(activeId, (a) => ({ transactions: [...a.transactions, tx] }));
     return check;
-  }, [account, updateAccount]);
+  }, [account, activeId, updateAccount]);
 
   // No deja borrar un movimiento si el libro queda incoherente (por ejemplo,
   // una compra de la que depende una venta posterior).
@@ -69,24 +78,26 @@ export function LedgerProvider({ children }) {
     const remaining = account.transactions.filter((t) => t.id !== id);
     const errors = ledgerIssues(account.initialCash, remaining);
     if (errors.length) return { ok: false, errors };
-    updateAccount(() => ({ transactions: remaining }));
+    updateAccount(activeId, () => ({ transactions: remaining }));
     return { ok: true, errors: [] };
-  }, [account, updateAccount]);
+  }, [account, activeId, updateAccount]);
 
   // Carga varias órdenes de una vez (cartera de ejemplo). Todo o nada.
-  const placeOrders = useCallback((orders) => {
+  // `forAccount` es la cuenta para la que se armaron: si ya no es la activa, no se cargan.
+  const placeOrders = useCallback((orders, forAccount = activeId) => {
+    if (forAccount !== activeId) return { ok: false, errors: ["Cambiaste de cuenta mientras se armaba la carga: no se guardó nada"] };
     const withIds = orders.map((o, i) => ({ ...o, id: `${Date.now()}-${i}` }));
     const errors = ledgerIssues(account.initialCash, [...account.transactions, ...withIds]);
     if (errors.length) return { ok: false, errors };
-    updateAccount((a) => ({ transactions: [...a.transactions, ...withIds] }));
+    updateAccount(activeId, (a) => ({ transactions: [...a.transactions, ...withIds] }));
     return { ok: true, errors: [] };
-  }, [account, updateAccount]);
+  }, [account, activeId, updateAccount]);
 
-  const resetAccount = useCallback(() => updateAccount(() => ({ transactions: [] })), [updateAccount]);
+  const resetAccount = useCallback(() => updateAccount(activeId, () => ({ transactions: [] })), [activeId, updateAccount]);
 
   const setInitialCash = useCallback((initialCash) => {
-    if (initialCash > 0) updateAccount(() => ({ initialCash }));
-  }, [updateAccount]);
+    if (initialCash > 0) updateAccount(activeId, () => ({ initialCash }));
+  }, [activeId, updateAccount]);
 
   const saveBenchmark = useCallback((bench) => {
     setState((s) => {
@@ -101,11 +112,11 @@ export function LedgerProvider({ children }) {
   }, []);
 
   const value = useMemo(() => ({
-    activeId: state.active,
+    activeId,
     account,
     benchmarks: state.benchmarks,
     setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark,
-  }), [state, account, setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
+  }), [state, account, activeId, setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;
 }

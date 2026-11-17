@@ -14,7 +14,8 @@ function asUnixInt(v) {
 export default async function handler(req, res) {
   const { ticker, period1, period2, interval = "1d" } = req.query;
 
-  if (!ticker || !/^[A-Za-z0-9._-]{1,12}$/.test(String(ticker))) {
+  // Se admite un "^" inicial para los índices de Yahoo (^VIX, ^GSPC).
+  if (!ticker || !/^\^?[A-Za-z0-9._-]{1,12}$/.test(String(ticker))) {
     return res.status(400).json({ error: "ticker inválido" });
   }
   const p1 = asUnixInt(period1);
