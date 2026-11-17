@@ -45,7 +45,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 |---|---|
 | `src/pages/` | Páginas React (una por ruta) |
 | `src/components/` | UI reutilizable (`Panel`, `Layout`, `thesis/`) |
-| `src/lib/` | Lógica del cliente: `ledger.js` (libro de órdenes), `perf.js` (métricas), `sectors.js` (sectores y mandato), `marketBoard.js`, `priceHistory.js`, `thesisApi.js`, `thesisView.js` |
+| `src/lib/` | Lógica del cliente: `ledger.js` (re-exporta `lib/ledger.js`), `ledgerSync.js`, `perf.js` (métricas), `sectors.js` (sectores y mandato), `marketBoard.js`, `priceHistory.js`, `thesisApi.js`, `thesisView.js` |
 | `src/store/` | `LedgerContext.jsx`: cuentas, órdenes y carteras de referencia en localStorage |
 | `api/` | Funciones serverless (endpoints y crons) |
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
@@ -76,8 +76,11 @@ acepta un módulo, un ticker (`nvda`) o una orden rápida (`buy nu 100`).
 **Portafolio ficticio**: dos cuentas (paper USD 1.000.000 y real USD 5.000),
 cada una con su libro de órdenes. Vive en localStorage (`dione:ledger:v1`),
 igual que las carteras de referencia (Claude, Grok u otras), que se cargan a
-mano porque no hay fuente automática. Pasarlo a una tabla `transactions` de
-Supabase sigue pendiente (Fase 2.1).
+mano porque no hay fuente automática. Con el token cargado se sincroniza con
+Supabase (Fase 2.1, `src/store/useLedgerSync.js`): cada cambio se sube con la
+versión que vio el navegador; si otro navegador escribió antes, la pantalla
+ofrece "usar Supabase" o "subir este navegador". Nunca mezcla libros solo.
+La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma).
 
 ## ENDPOINTS
 
@@ -93,6 +96,9 @@ Supabase sigue pendiente (Fase 2.1).
 | `POST /api/theses` | Importa bloques `dione-thesis-v2`. Exige `THESES_TOKEN` |
 | `GET /api/theses/[id]` | Una tesis con sus marcas diarias |
 | `GET /api/theses/stats` | Métricas de eficiencia (lo atiende `api/theses/[id].js`) |
+| `GET /api/theses/ledger` | Libro de órdenes de las dos cuentas y carteras de referencia. Exige `THESES_TOKEN` (`lib/ledgerApi.js`) |
+| `PUT /api/theses/ledger?account=paper` | Reemplaza el libro de una cuenta con control de versión (`baseVersion`). 409 si otro escribió antes |
+| `PUT /api/theses/ledger?resource=benchmarks` | Guarda la lista completa de carteras de referencia |
 
 Los endpoints de tesis responden `{ success, data, error?, meta? }`.
 
@@ -106,7 +112,7 @@ función existente.
 | Hora | Cron | Qué hace |
 |---|---|---|
 | 09:00 | `refresh-gems` | Universo y fundamentales desde SEC EDGAR, precio de Stooq, quality gate y preScore |
-| 10:00 | `refresh-technical` | Velas de Yahoo y `technicalScore` v3 para el top 200 por preScore |
+| 10:00 | `refresh-technical` | Velas de Yahoo para todos los gate-passers (más SPY y los 11 ETFs): `trendScore` v4 (`lib/trendScore.js`) y `technicalScore` v3 histórico. Corta a los 210 s; si falla más del 30% no pisa los scores previos |
 | 11:00 | `refresh-smart-money` | Insiders y analistas (Finnhub) |
 | 22:00 | `refresh-theses` | Tracker: reproduce cada tesis con velas de Yahoo. Sin LLM |
 
@@ -121,9 +127,12 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 | `symbol_metadata` | Cache de sector e industria (`001_symbol_metadata.sql`) | `lib/finnhub.js` |
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
 | `thesis_marks` | Una fila por tesis y día: precio, SPY, ETF sectorial, estado | `refresh-theses` |
+| `ledger_accounts` | Una fila por cuenta (paper, real): capital inicial y versión (`003_transactions.sql`) | `ledger_replace()` |
+| `transactions` | Una fila por movimiento del libro, en orden (`pos`) | `ledger_replace()` |
+| `benchmark_portfolios` | Carteras de referencia (Claude, Grok…) con sus pesos | `PUT /api/theses/ledger` |
 | `thesis_log` | Tabla vieja (v1). `002_theses.sql` migra sus filas a `theses`. Ya no se usa | nadie |
 
-`theses` y `thesis_marks` tienen RLS sin policies: solo entra la
+`theses`, `thesis_marks` y las tres del libro tienen RLS sin policies: solo entra la
 service_role. El navegador pasa siempre por `/api/theses`.
 
 ## VARIABLES DE ENTORNO
@@ -172,7 +181,7 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 ## DECISIONES DE DISEÑO YA TOMADAS (no revertir sin discutir)
 
 1. **Toda la medición va contra el S&P 500** con retorno ponderado por tiempo
-   (`src/lib/ledger.js`, `twrIndex`), para que aportes y retiros no cuenten
+   (`lib/ledger.js`, `twrIndex`), para que aportes y retiros no cuenten
    como retorno.
 2. **Métricas de desempeño, no VaR**: alfa, information ratio y máxima caída
    (`src/lib/perf.js`). La pantalla avisa cuando hay menos de 60 sesiones.
@@ -183,8 +192,10 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    tramo y los topes están en `src/lib/sectors.js` (`mandateChecks`). El
    tamaño sugerido de la boleta es 1% de la cuenta dividido por el stop.
 5. **El técnico no elige ganadores** (`TECHNICAL_VALIDATED.md`). El
-   `technicalScore` v3 del snapshot es histórico y no decide; lo reemplaza el
-   score de tendencia v4 en la Fase 3.
+   `technicalScore` v3 del snapshot es histórico y no decide. El ranking
+   técnico (`/api/screener?mode=technical`, columna Tendencia del Scan) usa el
+   `trendScore` v4. Etiqueta extra `ALCISTA` para el hueco que deja el
+   documento (sobre SMA200, entre +5% y +10% de la SMA50, RSI normal).
 6. **Diseño** (16-nov-2026): terminal cuantitativa. Barra de comandos,
    módulos numerados, cinta de precios y barra de estado; negro con acento
    azul, esquinas rectas, tema claro opcional. Los colores son variables CSS en `src/index.css`;
@@ -213,8 +224,8 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 ## PENDIENTES CONOCIDOS
 
 - Rotar la key de Finnhub (estuvo en texto plano en un documento ya borrado).
-- Pasar el libro de órdenes de localStorage a Supabase (Fase 2.1).
+- Aplicar `migrations/003_transactions.sql` en Supabase (sin ella el libro queda solo en el navegador).
 - Pesos sectoriales del S&P 500 desde una fuente real (Fase 2.3).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
-- El Scan sigue con el snapshot v3; el score de tendencia v4 es la Fase 3.
+- Fase 3 pendiente: sector GICS vacío en ~42% del universo (sin él la fuerza relativa usa SPY, bandera `benchmark_spy`), megacaps fuera del gate, snapshot semanal para NUEVO/SUBE/BAJA.
 - `README_HIDDEN_GEMS.md` está duplicado en la raíz y en `project-docs/`.

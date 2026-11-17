@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { C, panel, btn, th, td, input } from "../theme.js";
+import { Link } from "react-router-dom";
 import { Panel } from "../components/Panel.jsx";
+
+const TREND_TONE = { "EN ZONA": C.pos, ALCISTA: C.pos, EXTENDIDA: C.amber, RETROCESO: C.amber, RECUPERANDO: C.accent, ROTA: C.neg };
 
 // ---- helpers de formato ----
 
@@ -123,6 +126,8 @@ export default function HiddenGems() {
       marketCap: r.marketCap,
       price: r.price,
       preScore: r.preScore,
+      trendScore: r.trendScore ?? null,
+      trendLabel: r.trendLabel ?? null,
       ...r.metrics,
     }));
     return flat.sort((a, b) => {
@@ -252,6 +257,7 @@ export default function HiddenGems() {
                   <th style={{ ...th, textAlign: "left", paddingLeft: 8 }}>Ticker</th>
                   <th style={{ ...th, textAlign: "left" }}>Nombre</th>
                   <SortHeader label="Score"   field="preScore"     sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
+                  <SortHeader label="Tendencia" field="trendScore" sortBy={sortBy} onSort={handleSort} style={{ width: 130 }} />
                   <SortHeader label="Cap"      field="marketCap"    sortBy={sortBy} onSort={handleSort} style={{ width: 80 }} />
                   <SortHeader label="ROE"      field="roe"          sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
                   <SortHeader label="ROIC"     field="roic"         sortBy={sortBy} onSort={handleSort} style={{ width: 70 }} />
@@ -269,13 +275,21 @@ export default function HiddenGems() {
                       {idx + 1}
                     </td>
                     <td style={{ ...td, textAlign: "left", paddingLeft: 8 }}>
-                      <span style={{ color: C.accent, fontWeight: 700 }}>{r.symbol}</span>
+                      <Link to={`/chart?t=${r.symbol}`} title="Ver gráfico" style={{ color: C.accent, fontWeight: 700 }}>{r.symbol}</Link>
                     </td>
                     <td style={{ ...td, textAlign: "left", fontSize: 11, color: C.muted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {r.name || "—"}
                     </td>
                     <td style={{ ...td, fontSize: 15, fontWeight: 700 }}>
                       <ScoreBadge score={r.preScore} />
+                    </td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }} title="Score de tendencia v4 (0-100) y estado. Describe la tendencia; no elige ganadores.">
+                      {r.trendScore == null ? <span style={{ color: C.muted }}>—</span> : (
+                        <>
+                          <b style={{ color: C.text }}>{r.trendScore}</b>{" "}
+                          <span style={{ fontSize: 9.5, letterSpacing: "0.06em", color: TREND_TONE[r.trendLabel] || C.muted }}>{r.trendLabel}</span>
+                        </>
+                      )}
                     </td>
                     <td style={{ ...td, color: C.text }}>{fmtCap(r.marketCap)}</td>
                     <td style={{ ...td, color: C.text }}>{fmtPct(r.roe)}</td>
@@ -297,6 +311,7 @@ export default function HiddenGems() {
       <div style={{ marginTop: 14, fontSize: 10, color: C.muted, lineHeight: 1.7 }}>
         <b style={{ color: C.text }}>Quality gate:</b> ROE {">"} 10% · FCF positivo · D/E {"<"} 2.{" "}
         <b style={{ color: C.text }}>Pre-score:</b> calidad 50 · márgenes 25 · value 15 · solidez 10.{" "}
+        <b style={{ color: C.text }}>Tendencia (v4):</b> SMA200 20 · pendiente 15 · SMA50 sobre SMA200 10 · momentum 25 · fuerza vs sector 15 · zona de entrada 15. EN ZONA es la entrada típica; EXTENDIDA conviene esperar retroceso.{" "}
         Score ≥ 70 <span style={{ color: C.pos }}>●</span> · 50–69 <span style={{ color: C.accent }}>●</span> · {"<"}50 <span style={{ color: C.neg }}>●</span>.{" "}
         Esto es un <b style={{ color: C.text }}>screen barato</b> para armar shortlist — el análisis serio (Beneish, Piotroski, DCF) va en DIONE sobre el top 3-5.{" "}
         Datos refrescados 1x/día (9:00 UTC).

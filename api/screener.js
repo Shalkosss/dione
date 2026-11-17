@@ -58,6 +58,7 @@ export default async function handler(req, res) {
     const includeFailed = q.includeFailed === '1';
     const includeNoCap = q.includeNoCap === '1';
     // Acepta "true" o "1" (los clientes humanos tipean true, los crons mandan 1).
+    const trendLabel = q.trendLabel ? String(q.trendLabel).toUpperCase().slice(0, 20) : null;
     const includeBorderline = q.includeBorderline === 'true' || q.includeBorderline === '1';
     const requestedSort = (q.sort || defaultSort(mode)).toString();
 
@@ -84,6 +85,7 @@ export default async function handler(req, res) {
         const g = (r.gicsSector || '').toLowerCase();
         if (g !== gicsSector) return false;
       }
+      if (trendLabel && (r.trendLabel || '').toUpperCase() !== trendLabel) return false;
       if (!includeFailed && gateOnly && !r.gatePass) return false;
       if (r.gatePass && r.preScore != null && r.preScore < minScore && mode !== 'technical' && mode !== 'combo') return false;
       return true;
@@ -93,8 +95,13 @@ export default async function handler(req, res) {
     // (Phase B pendiente), technical/combo caen a preScore. Se documenta en meta.
     const hasTechScore = rows.some((r) => r.technicalScore != null);
     const hasComboScore = rows.some((r) => r.comboScore != null);
+    const hasTrendScore = rows.some((r) => r.trendScore != null);
     let sort = requestedSort;
     let sortFallback = null;
+    if (sort === 'trend' && !hasTrendScore) {
+      sort = hasTechScore ? 'technical' : 'score';
+      sortFallback = 'trendScore v4 todavía no calculado (corre con refresh-technical)';
+    }
     if (sort === 'technical' && !hasTechScore) {
       sort = 'score';
       sortFallback = 'preScore (technicalScore no precomputado en snapshot — Phase B pendiente)';
@@ -110,6 +117,7 @@ export default async function handler(req, res) {
       fcfYield: (a, b) => (b.fcfYield ?? -1) - (a.fcfYield ?? -1),
       cap: (a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0),
       technical: (a, b) => (b.technicalScore ?? -1) - (a.technicalScore ?? -1),
+      trend: (a, b) => (b.trendScore ?? -1) - (a.trendScore ?? -1),
       combo: (a, b) => (b.comboScore ?? -1) - (a.comboScore ?? -1),
     };
     rows.sort(sorters[sort] || sorters.score);
@@ -193,6 +201,11 @@ export default async function handler(req, res) {
           cmf: r.cmf ?? null,
         },
         technicalBreakdown: r.technicalBreakdown ?? null,
+        trendScore: r.trendScore ?? null,
+        trendLabel: r.trendLabel ?? null,
+        trendBreakdown: r.trendBreakdown ?? null,
+        trendInputs: r.trendInputs ?? null,
+        trendFlags: r.trendFlags ?? [],
         ...extra,
       };
     }
@@ -223,6 +236,7 @@ export default async function handler(req, res) {
           minScore,
           sector,
           gicsSector,
+          trendLabel,
           sort,
           sortRequested: requestedSort,
           sortFallback,
@@ -239,8 +253,9 @@ export default async function handler(req, res) {
   }
 }
 
+// El ranking técnico usa el score de tendencia v4; v3 queda como histórico.
 function defaultSort(mode) {
-  if (mode === 'technical') return 'technical';
+  if (mode === 'technical') return 'trend';
   if (mode === 'combo') return 'combo';
   return 'score';
 }

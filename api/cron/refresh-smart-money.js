@@ -51,10 +51,11 @@ export default async function handler(req, res) {
       return res.status(503).json({ error: 'snapshot fundamental no existe' });
     }
 
-    // Universo: top N por comboScore (o preScore si combo no existe) + override.
+    // Universo: top N por preScore + override. (Antes ordenaba por comboScore,
+    // pero desde v4 el comboScore existe para todo el universo y no decide.)
     const ranked = Object.values(snap.gems)
       .filter((g) => g.gatePass)
-      .sort((a, b) => (b.comboScore ?? b.preScore ?? 0) - (a.comboScore ?? a.preScore ?? 0))
+      .sort((a, b) => (b.preScore ?? 0) - (a.preScore ?? 0))
       .slice(0, TOP_N)
       .map((g) => g.symbol);
 

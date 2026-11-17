@@ -73,7 +73,7 @@ Etiquetas que acompañan al score:
 | RECUPERANDO | Bajo SMA200 con precio sobre SMA50 | Solo con tesis fundamental fuerte, a medio tamaño |
 | ROTA | Bajo SMA200 y bajo SMA50 | Sin orden. Se registra y se revisa al recuperar la SMA50 |
 
-Hasta que el cron calcule este score, DIONE lo computa desde `/api/candles` para los candidatos que vaya a mostrar. El campo `technicalScore` del snapshot corresponde a v3 y no se usa para decidir.
+El cron `refresh-technical` calcula este score para todo el universo (`trendScore`, `trendLabel` y `trendBreakdown` en el snapshot; código en `lib/trendScore.js`). Agrega una sexta etiqueta, ALCISTA, para el caso que la tabla no cubre: sobre SMA200, entre +5% y +10% de la SMA50 y RSI entre 40 y 75 (sin orden sugerida propia). El campo `technicalScore` del snapshot corresponde a v3 y no se usa para decidir.
 
 ## 5. Reglas de entrada
 
