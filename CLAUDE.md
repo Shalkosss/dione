@@ -53,7 +53,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `tests/` | Tests de vitest |
 | `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-backfill-check`) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
-| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
+| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`, `megacap_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
 
 ## PÁGINAS (módulos de la terminal)
 

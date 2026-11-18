@@ -19,6 +19,7 @@ Mapa de `project-docs/`. Este directorio es la fuente de los documentos del mét
 | 10b | `PEAD_2026-11.md` | Drift post-earnings en el S&P 500: no hay señal explotable; los eventos son contexto |
 | 10c | `QUALITY_2026-11.md` | Factores de calidad con datos ya publicados: señal débil, el preScore es filtro y no alfa |
 | 10d | `SMALLMID_2026-11.md` | Tendencia y drift en S&P 400 y 600: sin señal; la Fase 5 (ML) queda bloqueada |
+| 10e | `MEGACAPS_2026-11.md` | Comprar las 1, 5, 10 o 100 más grandes del S&P 500: no le gana siempre al índice; exceso no significativo y concentrado en 2017–2026 |
 | 11 | `ROADMAP_CLAUDE_CODE.md` | Plan para la web y para ML |
 | 12 | `FLUJO_DE_TRABAJO.md` | Local más GitHub, qué vive dónde |
 | 13 | `WATCHLIST.md` | Vista del log y foto de mercado |
