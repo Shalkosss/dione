@@ -225,9 +225,16 @@ describe('banderas REVISAR', () => {
 
   it('sector fuera de la lista de sobreponderados (solo si el contexto la trae)', () => {
     const candles = flat('2026-06-01', 5, 110);
-    const t = { ...MARKET, sector: 'Energy' };
+    const t = { ...MARKET, sector: 'Energy', sector_view: 'OW' };
     expect(codes(replayThesis(t, candles, { overweightSectors: ['Health Care'] }).thesis)).toContain('SECTOR');
+    expect(codes(replayThesis(t, candles, { overweightSectors: ['Energy'] }).thesis)).not.toContain('SECTOR');
     expect(codes(replayThesis(t, candles).thesis)).not.toContain('SECTOR');
+  });
+
+  it('una tesis emitida sin el sector sobreponderado no lleva bandera SECTOR', () => {
+    const candles = flat('2026-06-01', 5, 110);
+    const t = { ...MARKET, sector: 'Energy', sector_view: 'N' };
+    expect(codes(replayThesis(t, candles, { overweightSectors: ['Health Care'] }).thesis)).not.toContain('SECTOR');
   });
 
   it('una tesis cerrada no lleva banderas', () => {

@@ -25,3 +25,12 @@ export function putBenchmarks(benchmarks, token) {
     body: JSON.stringify({ benchmarks: clean }),
   });
 }
+
+// Vista de /macro (sectores sobreponderados) para la regla 3 del tracker.
+export function putMacro(view, token) {
+  return request("/api/theses/ledger?resource=macro", {
+    method: "PUT",
+    headers: json(token),
+    body: JSON.stringify(view),
+  });
+}

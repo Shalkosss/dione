@@ -5,6 +5,7 @@ import { Panel } from "../components/Panel.jsx";
 import { fetchMany } from "../lib/priceHistory.js";
 import { sectorBoard, marketRegime } from "../lib/marketBoard.js";
 import { SECTOR_ETFS } from "../lib/sectors.js";
+import MacroPanel from "../components/market/MacroPanel.jsx";
 
 const COLUMNS = [["1D", "r1d", 0.02], ["1M", "r1m", 0.08], ["3M", "r3m", 0.15], ["6M", "r6m", 0.25], ["12M", "r12m", 0.4]];
 const TONE = { pos: C.pos, neg: C.neg, amber: C.amber, muted: C.muted };
@@ -28,7 +29,7 @@ function Gauge({ label, value, color, note }) {
 
 // Módulo 3: régimen de mercado y tablero de los 11 sectores, calculado en el
 // navegador con velas de Yahoo. No gasta tokens ni usa keys.
-export default function Market() {
+function MarketBoard() {
   const [prices, setPrices] = useState(null);
   const [sortKey, setSortKey] = useState("rs3m");
 
@@ -101,6 +102,17 @@ export default function Market() {
           Fuerza relativa: retorno del sector a 3 meses menos el del S&P 500, en puntos. El régimen es una lectura simple (tendencia de SPY, VIX y amplitud), no una señal de compra.
         </div>
       </Panel>
+    </div>
+  );
+}
+
+// La vista de /macro no depende de los precios: se muestra aunque el tablero
+// esté cargando o Yahoo falle.
+export default function Market() {
+  return (
+    <div>
+      <MarketBoard />
+      <MacroPanel />
     </div>
   );
 }

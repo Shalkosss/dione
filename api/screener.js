@@ -68,8 +68,9 @@ export default async function handler(req, res) {
       if (!snap?.gems) return res.status(503).json({ error: 'snapshot todavía no generado — corré /api/cron/refresh-gems' });
       const perSector = Math.max(1, Math.min(num(q.perSector, 3), 10));
       const partMetas = mode === 'sectors' ? [] : (await Promise.all(TECH_IDS.map((id) => safe(readRowField(id, 'meta'))))).filter(Boolean);
+      const macroView = mode === 'regime' ? null : await safe(readRow('macro_view'));
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-      return res.status(200).json(buildScanResponse(snap, mode, { perSector, partMetas }));
+      return res.status(200).json({ ...buildScanResponse(snap, mode, { perSector, partMetas }), ...(mode === 'regime' ? {} : { macroView }) });
     }
     if (mode === 'universe') {
       let row;

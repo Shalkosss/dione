@@ -102,6 +102,7 @@ La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma
 | `GET /api/theses/ledger` | Libro de órdenes de las dos cuentas y carteras de referencia. Exige `THESES_TOKEN` (`lib/ledgerApi.js`) |
 | `PUT /api/theses/ledger?account=paper` | Reemplaza el libro de una cuenta con control de versión (`baseVersion`). 409 si otro escribió antes |
 | `PUT /api/theses/ledger?resource=benchmarks` | Guarda la lista completa de carteras de referencia |
+| `PUT /api/theses/ledger?resource=macro` | Guarda la vista sectorial de `/macro` (sobre, neutral, bajo) en la fila `macro_view`. Exige token. `/api/sectors` y `/api/scan` la devuelven como `macroView` |
 
 Los endpoints de tesis responden `{ success, data, error?, meta? }`.
 
@@ -127,7 +128,7 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 
 | Tabla | Contenido | Quién escribe |
 |---|---|---|
-| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB, `weekly` con el ranking de esta semana y la anterior, `universe` con NYSE y Nasdaq completos, `universe_tech_1/2` con su tendencia, `foreign_facts` con el cache de companyfacts y `events` con el barrido de resultados | `refresh-gems`, `refresh-technical`, `refresh-smart-money` |
+| `hidden_gems_snapshot` | Fila `latest` con el snapshot JSONB, `weekly` con el ranking de esta semana y la anterior, `universe` con NYSE y Nasdaq completos, `universe_tech_1/2` con su tendencia, `foreign_facts` con el cache de companyfacts, `macro_view` con la vista de `/macro` y `events` con el barrido de resultados | `refresh-gems`, `refresh-technical`, `refresh-smart-money` |
 | `smart_money_snapshot` | Una fila `latest` | `refresh-smart-money` |
 | `symbol_metadata` | Cache de sector e industria (`001_symbol_metadata.sql`) | `lib/finnhub.js` |
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
@@ -178,9 +179,10 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    objetivo base). No se modela la venta parcial ni subir el stop a la entrada.
 7. `CERRADA_TESIS` y el cierre manual por tiempo entran por el campo
    `manual_close` del bloque. `time_stop` cierra solo si no se llegó a +1R.
-8. La bandera de sector (regla 3 de vigencia) necesita la lista de
-   sobreponderados de `/macro`, que la web todavía no tiene. Queda inactiva
-   hasta la Fase 3 (`/api/sectors`).
+8. La bandera de sector (regla 3 de vigencia) usa la vista de `/macro` que se
+   carga en el módulo Mercado (fila `macro_view`, `lib/macroView.js`). Solo
+   aplica a tesis emitidas con `sector_view: "OW"` y solo si la vista tiene
+   menos de 60 días; sin vista vigente la regla queda inactiva.
 
 ---
 
@@ -267,6 +269,6 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - Universo: las extranjeras no tienen capitalización (ratio de ADR). Para tenerla haría falta el ratio ADS/acción por emisor o una fuente de market cap.
 - El cache de `companyfacts` se completa en varios días (unas 400 empresas por corrida).
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
-- Regla 8 del tracker (bandera de sector): `/api/sectors` ya existe, pero la lista de sobreponderados de `/macro` no llega a la web.
+- La vista de `/macro` se carga a mano en Mercado: el research todavía no la publica sola.
 - Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 (drift post-earnings) está hecho: en el S&P 500 no hay señal explotable (`project-docs/PEAD_2026-11.md`), así que `/api/events` es contexto y no ranking.
 - Fase 5 (ML) queda condicionada a que la Fase 4 encuentre features con contenido.
