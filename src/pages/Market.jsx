@@ -32,6 +32,14 @@ function Gauge({ label, value, color, note }) {
 function MarketBoard() {
   const [prices, setPrices] = useState(null);
   const [sortKey, setSortKey] = useState("rs3m");
+  // Amplitud de empresas (crons del servidor): % sobre su SMA200 en todo
+  // NYSE + Nasdaq invertible y en el universo de calidad. En local no existe.
+  const [breadth, setBreadth] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/regime").then((r) => r.json()).then((j) => { if (alive && j?.regime) setBreadth(j.regime); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +65,14 @@ function MarketBoard() {
         <Gauge label="S&P 500 VS MEDIA DE 200" value={signed(regime.spyDist)} color={regime.spyDist > 0 ? C.pos : C.neg} note={regime.spyDist > 0 ? "tendencia de fondo alcista" : "por debajo de su tendencia"} />
         <Gauge label="VIX" value={regime.vix == null ? "—" : regime.vix.toFixed(1)} color={regime.vix == null ? C.muted : regime.vix >= 22 ? C.neg : regime.vix >= 17 ? C.amber : C.pos} note="bajo 17 calma · sobre 22 tensión" />
         <Gauge label="SECTORES SOBRE SU MEDIA DE 200" value={`${regime.sectorsAbove} de ${regime.sectorsKnown}`} color={regime.breadth >= 0.5 ? C.pos : C.neg} note="amplitud: cuántos sectores acompañan" />
+        {breadth?.breadthMarket != null && (
+          <Gauge
+            label="EMPRESAS SOBRE SU MEDIA DE 200"
+            value={`${(breadth.breadthMarket * 100).toFixed(0)}%`}
+            color={breadth.breadthMarket >= 0.5 ? C.pos : C.neg}
+            note={`${breadth.breadthMarketSize} de NYSE y Nasdaq · calidad ${breadth.breadthUniverse != null ? `${(breadth.breadthUniverse * 100).toFixed(0)}%` : "—"}`}
+          />
+        )}
       </div>
 
       <Panel title="Tablero sectorial" right="clic en un encabezado para ordenar">
