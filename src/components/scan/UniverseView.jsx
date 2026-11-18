@@ -185,8 +185,9 @@ export default function UniverseView() {
         Contexto, no candidatas: el descubrimiento del método sigue en la vista de calidad (máx. 3 por sector).
         Lista de espera = falla una sola regla del gate y por poco. Extranjeras (moneda en ámbar): fundamentales de
         companyfacts en su moneda, sin capitalización ni FCF yield porque en un ADR precio × acciones no sirve.
-        Tendencia con ≈ = fuera del universo validado (small caps y fuera del gate): el percentil se mide contra el
-        universo de calidad y no cambia sus scores. * = precio de la corrida anterior.
+        Tendencia con ≈ = fuera del universo de calidad: el percentil se mide contra ese universo y no cambia sus
+        scores. La tendencia describe el estado del precio, no predice: en S&P 500, 400 y 600 su rank IC fue cero
+        (project-docs/SMALLMID_2026-11.md). * = precio de la corrida anterior.
       </div>
     </div>
   );

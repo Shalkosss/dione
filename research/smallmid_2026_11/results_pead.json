@@ -1,0 +1,165 @@
+{
+  "eventos": 44043,
+  "empresas": 1240,
+  "descartados": {
+    "sin_precio": 130,
+    "fuera_del_indice": 21818,
+    "duplicado": 1965,
+    "sin_ventana": 761,
+    "dato_raro": 16
+  },
+  "desde": "2012-01-04",
+  "hasta": "2026-11-17",
+  "variantes": {
+    "drift20_idx": {
+      "total": {
+        "trimestres": 60,
+        "eventos": 43214,
+        "spread_q5_q1": 0.001165781595026894,
+        "t_spread": 0.49311935103466353,
+        "spread_neto_costos": -0.018834218404973107,
+        "ic_medio": 0.007708151097877706,
+        "t_ic": 0.903630819063892,
+        "q1": 0.002640968699348837,
+        "q5": 0.0038067502943757315,
+        "pct_trimestres_spread_positivo": 0.5333333333333333
+      },
+      "descubrimiento_2012_2018": {
+        "trimestres": 28,
+        "eventos": 17385,
+        "spread_q5_q1": 0.0027541126073065275,
+        "t_spread": 1.0275016133005772,
+        "spread_neto_costos": -0.017245887392693473,
+        "ic_medio": 0.012591525281563968,
+        "t_ic": 1.170214952930056,
+        "q1": 0.0021537982826355623,
+        "q5": 0.004907910889942092,
+        "pct_trimestres_spread_positivo": 0.5
+      },
+      "validacion_2019_hoy": {
+        "trimestres": 32,
+        "eventos": 25829,
+        "spread_q5_q1": -0.00022400804071778552,
+        "t_spread": -0.06010941480774265,
+        "spread_neto_costos": -0.020224008040717785,
+        "ic_medio": 0.003435198687152226,
+        "t_ic": 0.26704540983077396,
+        "q1": 0.003067242813972953,
+        "q5": 0.0028432347732551674,
+        "pct_trimestres_spread_positivo": 0.5625
+      },
+      "horizonte_sesiones": 20,
+      "por_signo": {
+        "reaccion_mayor_5pct": {
+          "n": 9233,
+          "drift_medio": 0.004543745646730796
+        },
+        "reaccion_menor_-5pct": {
+          "n": 8910,
+          "drift_medio": 0.0023934160340042298
+        }
+      },
+      "por_indice": {
+        "S&P 400": {
+          "trimestres": 59,
+          "eventos": 18012,
+          "spread_q5_q1": -0.00032481160793883246,
+          "t_spread": -0.13804371433871848,
+          "spread_neto_costos": -0.020324811607938833,
+          "ic_medio": 0.013986072625509847,
+          "t_ic": 1.4065623711483592,
+          "q1": 0.0030791088119337937,
+          "q5": 0.002754297203994961,
+          "pct_trimestres_spread_positivo": 0.5423728813559322
+        },
+        "S&P 600": {
+          "trimestres": 59,
+          "eventos": 25139,
+          "spread_q5_q1": 0.0037208835538673633,
+          "t_spread": 1.4334408777076155,
+          "spread_neto_costos": -0.016279116446132638,
+          "ic_medio": 0.010885547250901892,
+          "t_ic": 1.0811976042846323,
+          "q1": 0.0027762114273489446,
+          "q5": 0.006497094981216308,
+          "pct_trimestres_spread_positivo": 0.5423728813559322
+        }
+      }
+    },
+    "drift60_idx": {
+      "total": {
+        "trimestres": 59,
+        "eventos": 43087,
+        "spread_q5_q1": 0.004227641359421076,
+        "t_spread": 1.0847384476004003,
+        "spread_neto_costos": -0.015772358640578923,
+        "ic_medio": 0.013983447101415622,
+        "t_ic": 1.6694246277694447,
+        "q1": 0.00423311742889758,
+        "q5": 0.008460758788318657,
+        "pct_trimestres_spread_positivo": 0.559322033898305
+      },
+      "descubrimiento_2012_2018": {
+        "trimestres": 28,
+        "eventos": 17385,
+        "spread_q5_q1": 0.007848140733826848,
+        "t_spread": 1.6945924984016174,
+        "spread_neto_costos": -0.012151859266173152,
+        "ic_medio": 0.0217427917905757,
+        "t_ic": 1.9590906967473245,
+        "q1": 0.0010749532276375048,
+        "q5": 0.008923093961464354,
+        "pct_trimestres_spread_positivo": 0.6785714285714286
+      },
+      "validacion_2019_hoy": {
+        "trimestres": 31,
+        "eventos": 25702,
+        "spread_q5_q1": 0.0009575128922158587,
+        "t_spread": 0.16026378922826195,
+        "spread_neto_costos": -0.019042487107784143,
+        "ic_medio": 0.006975006737012976,
+        "t_ic": 0.5912379612486283,
+        "q1": 0.007085652836487325,
+        "q5": 0.008043165728703188,
+        "pct_trimestres_spread_positivo": 0.45161290322580644
+      },
+      "horizonte_sesiones": 60,
+      "por_signo": {
+        "reaccion_mayor_5pct": {
+          "n": 9209,
+          "drift_medio": 0.0076593237001335275
+        },
+        "reaccion_menor_-5pct": {
+          "n": 8879,
+          "drift_medio": 0.0035264689398951106
+        }
+      },
+      "por_indice": {
+        "S&P 400": {
+          "trimestres": 59,
+          "eventos": 17980,
+          "spread_q5_q1": 0.001106253270398647,
+          "t_spread": 0.24120080432952912,
+          "spread_neto_costos": -0.018893746729601354,
+          "ic_medio": 0.015850988878524062,
+          "t_ic": 1.4314490090886445,
+          "q1": 0.004078291227159617,
+          "q5": 0.005184544497558264,
+          "pct_trimestres_spread_positivo": 0.5084745762711864
+        },
+        "S&P 600": {
+          "trimestres": 59,
+          "eventos": 25107,
+          "spread_q5_q1": 0.004778292343646322,
+          "t_spread": 1.039598330264249,
+          "spread_neto_costos": -0.015221707656353677,
+          "ic_medio": 0.013367501027594746,
+          "t_ic": 1.4050255168140466,
+          "q1": 0.006588887214441017,
+          "q5": 0.01136717955808734,
+          "pct_trimestres_spread_positivo": 0.5932203389830508
+        }
+      }
+    }
+  }
+}

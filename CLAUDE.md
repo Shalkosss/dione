@@ -270,5 +270,5 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - El cache de `companyfacts` se completa en varios días (unas 400 empresas por corrida).
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
 - La vista de `/macro` se carga a mano en Mercado: el research todavía no la publica sola.
-- Fase 4: ítems 2 (small y mid caps, en curso) y 4 (THESIS_LOG con 30 registros). Hechos: ítem 1, drift post-earnings (`PEAD_2026-11.md`: sin señal explotable en el S&P 500, `/api/events` es contexto) e ítem 3, calidad por fecha de publicación (`QUALITY_2026-11.md`: compuesto con IC +0.015, sin significancia neta; el preScore es filtro, no alfa).
-- Fase 5 (ML) queda condicionada a que la Fase 4 encuentre features con contenido.
+- Fase 4: solo falta el ítem 4 (medir el THESIS_LOG con 30 registros). Hechos y sin señal explotable: ítem 1, drift post-earnings en el S&P 500 (`PEAD_2026-11.md`); ítem 2, tendencia v4 y drift en S&P 400 y 600 (`SMALLMID_2026-11.md`); ítem 3, calidad por fecha de publicación (`QUALITY_2026-11.md`). `/api/events` y la tendencia son contexto; el preScore es filtro.
+- Fase 5 (ML) bloqueada: la Fase 4 no encontró features con contenido (`SMALLMID_2026-11.md`).

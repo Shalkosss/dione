@@ -83,7 +83,11 @@ Carpeta `research/` con universo point-in-time y validación walk-forward. Tests
 
 Regla del laboratorio: todo resultado declara universo, periodo, sesgos y número de variantes probadas.
 
+**Estado (18-nov-2026)**: ítems 1, 2 y 3 hechos, ninguno con señal explotable después de costos (`PEAD_2026-11.md`, `SMALLMID_2026-11.md`, `QUALITY_2026-11.md`). Falta el ítem 4, que depende de juntar 30 tesis.
+
 ## Fase 5 — Machine learning (condicionado)
+
+**Estado (18-nov-2026): bloqueada.** La Fase 4 no encontró features con contenido en large, mid ni small caps.
 
 Con features de precio en large caps no hay señal que aprender: el rank IC medido es cercano a cero y un modelo flexible solo ajustaría ruido. ML entra cuando la Fase 4 encuentre features con contenido.
 
