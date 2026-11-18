@@ -53,7 +53,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `tests/` | Tests de vitest |
 | `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-backfill-check`) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
-| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
+| `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
 
 ## PÁGINAS (módulos de la terminal)
 
@@ -270,5 +270,5 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 - El cache de `companyfacts` se completa en varios días (unas 400 empresas por corrida).
 - Fase 2.5: comparación con carteras de IA públicas. Hoy se cargan a mano; falta elegir una fuente con datos descargables.
 - La vista de `/macro` se carga a mano en Mercado: el research todavía no la publica sola.
-- Fase 4: ítems 2 (small y mid caps), 3 (calidad por fecha de publicación) y 4 (THESIS_LOG con 30 registros). El ítem 1 (drift post-earnings) está hecho: en el S&P 500 no hay señal explotable (`project-docs/PEAD_2026-11.md`), así que `/api/events` es contexto y no ranking.
+- Fase 4: ítems 2 (small y mid caps, en curso) y 4 (THESIS_LOG con 30 registros). Hechos: ítem 1, drift post-earnings (`PEAD_2026-11.md`: sin señal explotable en el S&P 500, `/api/events` es contexto) e ítem 3, calidad por fecha de publicación (`QUALITY_2026-11.md`: compuesto con IC +0.015, sin significancia neta; el preScore es filtro, no alfa).
 - Fase 5 (ML) queda condicionada a que la Fase 4 encuentre features con contenido.
