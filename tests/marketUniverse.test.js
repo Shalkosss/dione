@@ -94,6 +94,9 @@ describe("universeRow y queryUniverse", () => {
     expect(queryUniverse(rows, { exchange: "Nasdaq" }).rows.map((r) => r.symbol)).toEqual(["BIG"]);
     expect(queryUniverse(rows, { sector: "financials" }).rows.map((r) => r.symbol)).toEqual(["MID"]);
     expect(queryUniverse(rows, { q: "penny" }).rows.map((r) => r.symbol)).toEqual(["PENNY"]);
+    // El ticker exacto va primero aunque no tenga capitalización.
+    const withForeign = [...rows, { ...rows[0], symbol: "BI", name: "Bi Holdings", marketCap: null }];
+    expect(queryUniverse(withForeign, { q: "bi" }).rows[0].symbol).toBe("BI");
     const page = queryUniverse(rows, { limit: "2", offset: "2" });
     expect(page.rows).toHaveLength(2);
     expect(page.total).toBe(4);
