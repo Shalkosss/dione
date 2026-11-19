@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { validateInBook, ledgerIssues } from "../lib/ledger.js";
+import { positionPlan, levelsTransactionId } from "../lib/positionStats.js";
 import { useLedgerSync } from "./useLedgerSync.js";
 
 /* Portafolio ficticio: dos cuentas (paper y real) con su libro de órdenes, y
@@ -113,6 +114,25 @@ export function LedgerProvider({ children }) {
     return { ok: true, errors: [] };
   }, [account, activeId, updateAccount]);
 
+  // Stop y take profit del tramo abierto de un ticker. Se guardan en la compra
+  // que ya los tenía o en la última del tramo. null borra el nivel.
+  const setPositionLevels = useCallback((ticker, { stop, target }) => {
+    const plan = positionPlan(account.transactions, ticker);
+    const txId = levelsTransactionId(plan);
+    if (!txId) return { ok: false, errors: [`No hay posición abierta en ${ticker}`] };
+    const clean = (v) => (Number(v) > 0 ? Number(v) : null);
+    const s = clean(stop), t = clean(target);
+    if (s != null && t != null && s >= t) return { ok: false, errors: ["El stop tiene que quedar debajo del take profit"] };
+    updateAccount(activeId, (a) => ({
+      transactions: a.transactions.map((tx) => {
+        if (tx.id !== txId) return tx;
+        const { stop: _s, target: _t, ...rest } = tx;
+        return { ...rest, ...(s != null ? { stop: s } : {}), ...(t != null ? { target: t } : {}) };
+      }),
+    }));
+    return { ok: true, errors: [] };
+  }, [account, activeId, updateAccount]);
+
   const resetAccount = useCallback(() => updateAccount(activeId, () => ({ transactions: [] })), [activeId, updateAccount]);
 
   const setInitialCash = useCallback((initialCash) => {
@@ -137,8 +157,8 @@ export function LedgerProvider({ children }) {
     benchmarks: state.benchmarks,
     sync,
     transactionCount,
-    setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark,
-  }), [state, account, activeId, sync, transactionCount, setActive, placeOrder, placeOrders, removeTransaction, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
+    setActive, placeOrder, placeOrders, removeTransaction, setPositionLevels, resetAccount, setInitialCash, saveBenchmark, removeBenchmark,
+  }), [state, account, activeId, sync, transactionCount, setActive, placeOrder, placeOrders, removeTransaction, setPositionLevels, resetAccount, setInitialCash, saveBenchmark, removeBenchmark]);
 
   return <LedgerContext.Provider value={value}>{children}</LedgerContext.Provider>;
 }

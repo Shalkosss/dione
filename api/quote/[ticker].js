@@ -5,6 +5,7 @@
 // responde y hay FINNHUB_KEY en el entorno, se usa Finnhub como respaldo.
 
 import { quoteFromChart } from '../../lib/quote.js';
+import { parseYahooNews, newsUrl } from '../../lib/news.js';
 
 const YAHOO_HOSTS = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
 const HEADERS = {
@@ -48,9 +49,27 @@ async function finnhubQuote(ticker) {
   };
 }
 
+// Titulares recientes (Portafolio → Seguimiento). Vive acá porque el plan
+// Hobby de Vercel no admite más funciones.
+async function yahooNews(ticker) {
+  const symbol = ticker.replace('.', '-');
+  for (const host of YAHOO_HOSTS) {
+    const json = await fetchJson(newsUrl(host, symbol), HEADERS);
+    if (json) return parseYahooNews(json, symbol);
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   const ticker = String(req.query.ticker || '').toUpperCase().trim();
   if (!TICKER_RE.test(ticker)) return res.status(400).json({ error: 'Ticker inválido' });
+
+  if (req.query.news) {
+    const news = await yahooNews(ticker);
+    if (!news) return res.status(502).json({ error: `Yahoo no devolvió noticias de ${ticker}`, ticker });
+    res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
+    return res.status(200).json({ ticker, news, fetchedAt: new Date().toISOString() });
+  }
 
   const quote = (await yahooQuote(ticker)) || (await finnhubQuote(ticker));
   if (!quote) return res.status(404).json({ error: `Sin cotización para ${ticker}`, ticker });

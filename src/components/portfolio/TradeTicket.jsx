@@ -34,6 +34,7 @@ export default function TradeTicket({ nav, prefill }) {
   const [price, setPrice] = useState("");
   const [sector, setSector] = useState("");
   const [stopPct, setStopPct] = useState("10");
+  const [target, setTarget] = useState("");
   const [quote, setQuote] = useState(null); // { close, date } o { missing: true }
   const [message, setMessage] = useState(null);
   const symbolRef = useRef("");
@@ -83,10 +84,16 @@ export default function TradeTicket({ nav, prefill }) {
 
   function submit(e) {
     e.preventDefault();
-    const result = placeOrder({ side, ticker: symbol, date, qty: q, price: p, sector: sector || null });
+    // En compras se guardan el stop (precio) y el take profit para el seguimiento.
+    const levels = side === "BUY"
+      ? { ...(stop > 0 && p > 0 ? { stop: +(p * (1 - stop)).toFixed(4) } : {}), ...(Number(target) > p ? { target: Number(target) } : {}) }
+      : {};
+    if (side === "BUY" && target && !(Number(target) > p)) { setMessage({ ok: false, text: "El take profit tiene que quedar sobre el precio de compra" }); return; }
+    const result = placeOrder({ side, ticker: symbol, date, qty: q, price: p, sector: sector || null, ...levels });
     if (!result.ok) { setMessage({ ok: false, text: result.errors.join(" · ") }); return; }
     setMessage({ ok: true, text: `${side === "BUY" ? "Compra" : "Venta"} registrada: ${q} ${symbol} a ${p.toFixed(2)}` });
     setQty("");
+    setTarget("");
   }
 
   const isBuy = side === "BUY";
@@ -131,6 +138,13 @@ export default function TradeTicket({ nav, prefill }) {
             <Field label="Stop previsto (% bajo la entrada)">
               <input type="number" min="1" max="50" step="0.5" value={stopPct} onChange={(e) => setStopPct(e.target.value)} style={field} />
             </Field>
+            <Field label={`Take profit (precio)${Number(target) > p && p > 0 ? ` · +${((Number(target) / p - 1) * 100).toFixed(1)}%` : ""}`}>
+              <input type="number" min="0" step="any" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="opcional" style={field} />
+            </Field>
+            <div style={{ gridColumn: "span 1", alignSelf: "end", fontFamily: mono, fontSize: 10.5, color: C.muted, paddingBottom: 8 }}>
+              {p > 0 && stop > 0 ? `stop en ${(p * (1 - stop)).toFixed(2)}` : ""}
+              {p > 0 && stop > 0 && Number(target) > p ? ` · R:R ${((Number(target) - p) / (p * stop)).toFixed(1)}` : ""}
+            </div>
             <div style={{ gridColumn: "span 2", background: C.panel2, border: `1px solid ${C.border}`, padding: "8px 10px", fontSize: 11.5, color: C.muted }}>
               Tamaño por riesgo (1% de la cuenta ÷ stop):{" "}
               {suggested ? (

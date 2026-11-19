@@ -45,7 +45,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 |---|---|
 | `src/pages/` | Páginas React (una por ruta) |
 | `src/components/` | UI reutilizable (`Panel`, `Layout`, `thesis/`) |
-| `src/lib/` | Lógica del cliente: `ledger.js` (re-exporta `lib/ledger.js`), `ledgerSync.js`, `perf.js` (métricas), `sectors.js` (sectores y mandato), `marketBoard.js`, `priceHistory.js`, `thesisApi.js`, `thesisView.js` |
+| `src/lib/` | Lógica del cliente: `ledger.js` (re-exporta `lib/ledger.js`), `ledgerSync.js`, `perf.js` (métricas), `sectors.js` (sectores y mandato), `marketBoard.js`, `priceHistory.js`, `thesisApi.js`, `thesisView.js`, `wyckoff.js` (eventos del Chart), `levels.js` (soportes, resistencias, directrices, perfil de volumen), `chartData.js`, `positionStats.js` (seguimiento de posiciones) |
 | `src/store/` | `LedgerContext.jsx`: cuentas, órdenes y carteras de referencia en localStorage |
 | `api/` | Funciones serverless (endpoints y crons) |
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
@@ -62,13 +62,13 @@ Watchlist y el Screener de navegador se retiraron: no figuran en ninguna fase.
 
 | Ruta | Página | Qué hace |
 |---|---|---|
-| `/` | `Portfolio.jsx` | Cartera ficticia contra benchmarks: curva base 100, rentabilidad por plazo, sectores contra S&P 500, mandato, boleta de orden y libro de órdenes |
+| `/` | `Portfolio.jsx` | Cartera ficticia contra benchmarks: curva base 100, rentabilidad por plazo, sectores contra S&P 500, mandato, boleta de orden (con stop y take profit), seguimiento de cada posición desde la compra (gráfico con SL y TP, R, Sharpe, beta, distancia al stop, correlación y noticias) y libro de órdenes |
 | `/performance` | `Performance.jsx` | Alfa, beta, information ratio, tracking error, Sharpe, Sortino, máxima caída, captura, retornos mensuales |
 | `/market` | `Market.jsx` | Régimen (SPY contra SMA200, VIX, amplitud) y tablero de los 11 sectores |
 | `/scan` | `HiddenGems.jsx` | Lee el snapshot de `/api/screener`. Solo funciona en Vercel |
 | `/earnings` | `Earnings.jsx` | Fechas de resultados (EDGAR) y reacción del precio |
 | `/thesis` | `Thesis.jsx` | Tracker de tesis (ver abajo) |
-| `/chart` | `Chart.jsx` | Precio con indicadores y Wyckoff. Acepta `?t=TICKER` |
+| `/chart` | `Chart.jsx` | Línea o velas, SMA 50/200, volumen relativo (RVOL 20 o 10), eventos y fase Wyckoff, soportes y resistencias, directrices y perfil de volumen automáticos. Si el ticker está en cartera dibuja la compra, el tramo tenido en punteado, el stop y el take profit. Acepta `?t=TICKER` |
 
 Navegación: Alt+1…7 cambia de módulo; Ctrl+K enfoca la línea de comandos, que
 acepta un módulo, un ticker (`nvda`) o una orden rápida (`buy nu 100`).
@@ -91,7 +91,7 @@ La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma
 | `GET /api/sectors`, `GET /api/regime` | Rewrites a `mode=sectors` y `mode=regime`. Los calcula `refresh-technical` y quedan en `meta.market` |
 | `GET /api/universe` | Rewrite a `/api/screener?mode=universe`: todas las empresas comunes de NYSE y Nasdaq (~6.000, fila `universe`) con el gate como etiqueta, lista de espera y piso de $3 y $300M. Filtros en `lib/marketUniverse.js` (`queryUniverse`). Contexto, no candidatas |
 | `GET /api/smart-money` | Snapshot de insiders (Form 4 de EDGAR) y analistas (Finnhub, opcional). `?ticker=` para uno solo |
-| `GET /api/quote/[ticker]` | Cotización vía Yahoo chart v8, sin key. Finnhub solo de respaldo si hay `FINNHUB_KEY` |
+| `GET /api/quote/[ticker]` | Cotización vía Yahoo chart v8, sin key. Finnhub solo de respaldo si hay `FINNHUB_KEY`. Con `?news=1` devuelve titulares de Yahoo (`lib/news.js`) |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
 | `GET /api/healthz` | Frescura del snapshot |
 | `GET /api/events?tickers=` | Últimos 8-K con ítem 2.02 de SEC EDGAR por ticker (máx. 25). Sin key |
@@ -134,7 +134,7 @@ Todos se protegen con `Authorization: Bearer $CRON_SECRET`.
 | `theses` | Una fila por tesis: bloque v2 más estado del tracker (`002_theses.sql`) | `POST /api/theses`, `refresh-theses` |
 | `thesis_marks` | Una fila por tesis y día: precio, SPY, ETF sectorial, estado | `refresh-theses` |
 | `ledger_accounts` | Una fila por cuenta (paper, real): capital inicial y versión (`003_transactions.sql`) | `ledger_replace()` |
-| `transactions` | Una fila por movimiento del libro, en orden (`pos`) | `ledger_replace()` |
+| `transactions` | Una fila por movimiento del libro, en orden (`pos`). `stop` y `target` de cada compra desde `004_transaction_levels.sql` | `ledger_replace()` |
 | `benchmark_portfolios` | Carteras de referencia (Claude, Grok…) con sus pesos | `PUT /api/theses/ledger` |
 | `thesis_log` | Tabla vieja (v1). `002_theses.sql` migra sus filas a `theses`. Ya no se usa | nadie |
 
@@ -241,6 +241,14 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    la bandera `fuera_validado` (en pantalla, "≈"): el v4 se validó en large caps.
    La amplitud del mercado completo sale en `/api/regime` como `breadthMarket`
    (calidad más las tandas del día); `breadthUniverse` sigue siendo solo calidad.
+11. **Wyckoff del Chart** (19-nov-2026): `src/lib/wyckoff.js` sigue WYCKOFF_FRAMEWORK.md:
+   RVOL contra las 20 sesiones PREVIAS, Spring (A) y (B) sin compuerta de volumen
+   (seco, moderado o shakeout es solo etiqueta), Test en la primera vuelta a la zona
+   con cierre en la mitad superior, invalidación por nuevo mínimo. `lib/wyckoff.js`
+   (servidor) es el del `technicalScore` v3 histórico y conserva la regla vieja:
+   no decide nada. Soportes, resistencias y directrices (`src/lib/levels.js`) son
+   descriptivos. Stop y take profit viven en la compra (`stop`, `target`); si faltan,
+   el seguimiento usa los de la tesis viva del ticker.
 
 ---
 
@@ -262,7 +270,7 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 ## PENDIENTES CONOCIDOS
 
 - Rotar la key de Finnhub (estuvo en texto plano en un documento ya borrado).
-- Aplicar `migrations/003_transactions.sql` en Supabase (sin ella el libro queda solo en el navegador).
+- Aplicar `migrations/003_transactions.sql` y después `004_transaction_levels.sql` en Supabase (sin ellas el libro, o su stop y take profit, quedan solo en el navegador).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
 - Gate de deuda: si solo falta la deuda corriente se toma como cero; una empresa que la tenga bajo un tag no leído sale con D/E algo subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.

@@ -1,81 +1,60 @@
-/* Chart.jsx — Página de análisis técnico individual.
-   Trae OHLCV de /api/candles/<ticker> y calcula indicadores client-side:
-   SMA 50/200, RSI 14, Bollinger (20, 2), OBV, y eventos Wyckoff.
-
-   El endpoint /api/candles ya existe — passthrough simple al chart API de
-   Yahoo. Recibe period1/period2 (epoch seconds) e interval. En dev,
-   vite.config.js proxea; en prod, lo levanta la serverless function.
+/* Chart.jsx — Análisis técnico de un ticker.
+   Velas de /api/candles (Yahoo, sin key). Los indicadores se calculan sobre
+   la historia completa con calentamiento y se muestra el rango elegido:
+   SMA 50/200, Bollinger, RSI, OBV, volumen relativo, eventos Wyckoff,
+   soportes y resistencias, directrices y perfil de volumen. Si el ticker está
+   en la cartera activa, dibuja la compra, el stop y el take profit.
 */
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import {
-  ComposedChart, LineChart, BarChart, Line, Bar, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, ReferenceDot, Legend,
-} from "recharts";
-import { useSearchParams } from "react-router-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { Link, useSearchParams } from "react-router-dom";
 import { C, mono, panel, btn, input } from "../theme.js";
 import { Panel } from "../components/Panel.jsx";
-import { sma, rsi, bollinger, obv } from "../lib/indicators.js";
-import { detectWyckoffEvents, WYCKOFF_COLORS } from "../lib/wyckoff.js";
+import { Segmented } from "../components/ui.jsx";
+import PriceChart from "../components/chart/PriceChart.jsx";
+import VolumePanel, { fmtVol } from "../components/chart/VolumePanel.jsx";
+import { WyckoffTable, LevelsTable } from "../components/chart/ChartTables.jsx";
+import { detectWyckoffEvents, wyckoffPhase, WYCKOFF_COLORS } from "../lib/wyckoff.js";
+import { supportResistance, trendlines, volumeProfile } from "../lib/levels.js";
+import { enrichCandles, visibleStart, splitHeld, withTrendlines, WARMUP_DAYS } from "../lib/chartData.js";
+import { positionPlan, levelsFromThesis, effectiveLevels } from "../lib/positionStats.js";
+import { useLiveTheses } from "../lib/useLiveTheses.js";
+import { useLedger, ACCOUNTS } from "../store/LedgerContext.jsx";
 
 const STORAGE_KEY = "dione:chart:lastTicker";
-
+const PREFS_KEY = "dione:chart:prefs";
 const RANGES = [
-  { id: "1mo", label: "1M", days: 30 },
-  { id: "3mo", label: "3M", days: 90 },
-  { id: "6mo", label: "6M", days: 180 },
-  { id: "1y",  label: "1Y", days: 365 },
-  { id: "2y",  label: "2Y", days: 730 },
-  { id: "5y",  label: "5Y", days: 1825 },
+  { id: "1mo", label: "1M", days: 30 }, { id: "3mo", label: "3M", days: 90 }, { id: "6mo", label: "6M", days: 180 },
+  { id: "1y", label: "1A", days: 365 }, { id: "2y", label: "2A", days: 730 }, { id: "5y", label: "5A", days: 1825 },
   { id: "max", label: "MAX", days: null },
 ];
+const DEFAULT_SHOW = { wyckoff: true, levels: true, trend: true, profile: false, boll: false, obv: false, position: true };
+const TOGGLES = [["wyckoff", "Wyckoff", "accent"], ["levels", "Soportes/Resist.", "pos"], ["trend", "Directrices", "neg"], ["profile", "Perfil vol.", "amber"], ["boll", "Bollinger", "blue"], ["obv", "OBV", "pos"], ["position", "Mi posición", "accent"]];
 
-// ---- helpers ----
+const fmtPrice = (v) => (v == null ? "—" : Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const fmtPct = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`);
 
-const fmtPrice = (v) =>
-  v == null ? "—" : "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function loadPrefs() {
+  try { return { mode: "line", vol: "rvol20", ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") }; } catch { return { mode: "line", vol: "rvol20" }; }
+}
 
-const fmtPct = (v) =>
-  v == null ? "—" : (v >= 0 ? "+" : "") + Number(v).toFixed(2) + "%";
-
-const fmtVol = (v) => {
-  if (v == null) return "—";
-  if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
-  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
-  if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
-  return String(v);
-};
-
-// Lee la respuesta cruda de Yahoo y arma candles ordenados.
 function parseYahooCandles(raw) {
   const r = raw?.chart?.result?.[0];
   if (!r) return [];
-  const ts = r.timestamp || [];
   const q = r.indicators?.quote?.[0] || {};
-  const adj = r.indicators?.adjclose?.[0]?.adjclose || [];
-  return ts
-    .map((t, i) => ({
-      t: t * 1000,
-      date: new Date(t * 1000).toISOString().slice(0, 10),
-      open: q.open?.[i] ?? null,
-      high: q.high?.[i] ?? null,
-      low: q.low?.[i] ?? null,
-      close: q.close?.[i] ?? null,
-      adjClose: adj[i] ?? q.close?.[i] ?? null,
-      volume: q.volume?.[i] ?? null,
-    }))
+  return (r.timestamp || [])
+    .map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), open: q.open?.[i] ?? null, high: q.high?.[i] ?? null, low: q.low?.[i] ?? null, close: q.close?.[i] ?? null, volume: q.volume?.[i] ?? null }))
     .filter((c) => c.close != null && c.high != null && c.low != null);
 }
 
 async function fetchCandles(ticker, days) {
   const to = Math.floor(Date.now() / 1000);
-  const from = days == null ? 0 : to - days * 86400;
-  const url = `/api/candles/${encodeURIComponent(ticker)}?period1=${from}&period2=${to}&interval=1d`;
+  const from = days == null ? 0 : to - (days + WARMUP_DAYS) * 86400;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
   try {
-    const r = await fetch(url, { signal: ctrl.signal });
+    const r = await fetch(`/api/candles/${encodeURIComponent(ticker)}?period1=${from}&period2=${to}&interval=1d`, { signal: ctrl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (data?.chart?.error) throw new Error(data.chart.error.description || "Yahoo error");
@@ -85,17 +64,33 @@ async function fetchCandles(ticker, days) {
   }
 }
 
-// ---- estilos tooltip de recharts ----
-const tooltipStyle = {
-  background: C.panel2,
-  border: `1px solid ${C.border}`,
-  borderRadius: 4,
-  fontSize: 11,
-  color: C.text,
-};
-const tooltipLabelStyle = { color: C.muted, fontSize: 10 };
+function Toggle({ label, active, onClick, color }) {
+  return (
+    <button onClick={onClick} style={{ ...btn, padding: "5px 10px", fontSize: 10, color: active ? C.bg : color, background: active ? color : "transparent", borderColor: color }}>
+      {active ? "● " : "○ "}{label}
+    </button>
+  );
+}
 
-// ---- componente ----
+function PositionStrip({ plan, levels, price, accountLabel }) {
+  const ret = price / plan.avgCost - 1;
+  const item = (k, v, color = C.text) => <span><span style={{ color: C.muted }}>{k} </span><b style={{ color }}>{v}</b></span>;
+  return (
+    <div style={{ ...panel, marginBottom: 12, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", fontFamily: mono, fontSize: 11.5, borderColor: C.accent }}>
+      <span style={{ color: C.accent, letterSpacing: "0.1em", fontSize: 10 }}>EN CARTERA · {accountLabel.toUpperCase()}</span>
+      {item("cantidad", +plan.qty.toFixed(3))}
+      {item("costo prom.", fmtPrice(plan.avgCost))}
+      {item("desde", plan.startDate)}
+      {item("resultado", fmtPct(ret), ret >= 0 ? C.pos : C.neg)}
+      {!levels.stop ? item("stop", "sin definir", C.amber)
+        : price <= levels.stop ? item("stop", `perforado (${fmtPrice(levels.stop)})`, C.neg)
+          : item("al stop", `${fmtPct(levels.stop / price - 1)} (${fmtPrice(levels.stop)})`, C.neg)}
+      {levels.target ? item("al take profit", `${fmtPct(levels.target / price - 1)} (${fmtPrice(levels.target)})`, C.pos) : item("take profit", "sin definir", C.amber)}
+      {levels.source === "tesis" && <span style={{ color: C.muted }}>niveles de la tesis</span>}
+      <Link to="/#seguimiento" style={{ marginLeft: "auto", color: C.accent, fontSize: 10.5 }}>editar en Portafolio →</Link>
+    </div>
+  );
+}
 
 export default function Chart() {
   const [tickerInput, setTickerInput] = useState("");
@@ -104,40 +99,74 @@ export default function Chart() {
   const [candles, setCandles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  const [show, setShow] = useState(DEFAULT_SHOW);
+  const [prefs, setPrefs] = useState(loadPrefs);
+  const { account, activeId } = useLedger();
+  const theses = useLiveTheses();
 
-  const [showWyckoff, setShowWyckoff] = useState(true);
-  const [showBoll, setShowBoll] = useState(false);
-  const [showOBV, setShowOBV] = useState(false);
-
-  // Ticker inicial: el de la URL (?t=NVDA, lo usa la paleta Ctrl+K) o, si no
-  // hay, el último visto guardado en localStorage.
   const [searchParams] = useSearchParams();
   const urlTicker = (searchParams.get("t") || "").toUpperCase().trim();
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    let saved = null;
+    try { saved = localStorage.getItem(STORAGE_KEY); } catch { /* sin almacenamiento */ }
     const initial = urlTicker || saved || "AAPL";
     setTickerInput(initial);
     setTicker(initial);
   }, [urlTicker]);
 
-  // Cada vez que cambia ticker o range, refetch.
   useEffect(() => {
-    if (!ticker) return;
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* sin almacenamiento */ }
+  }, [prefs]);
+
+  const days = RANGES.find((r) => r.id === range)?.days ?? 365;
+  useEffect(() => {
+    if (!ticker) return undefined;
     let cancelled = false;
     setLoading(true);
     setErr(null);
-    const days = RANGES.find((r) => r.id === range)?.days ?? 365;
     fetchCandles(ticker, days)
       .then((cs) => {
         if (cancelled) return;
         if (cs.length === 0) setErr(`Sin datos para ${ticker}`);
         setCandles(cs);
-        localStorage.setItem(STORAGE_KEY, ticker);
+        try { localStorage.setItem(STORAGE_KEY, ticker); } catch { /* sin almacenamiento */ }
       })
       .catch((e) => { if (!cancelled) setErr(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ticker, range]);
+  }, [ticker, days]);
+
+  const rvolPeriod = prefs.vol === "rvol10" ? 10 : 20;
+  const full = useMemo(() => enrichCandles(candles, { rvolPeriod }), [candles, rvolPeriod]);
+  const start = useMemo(() => visibleStart(full, days), [full, days]);
+  const wy = useMemo(() => detectWyckoffEvents(candles), [candles]);
+  const phase = useMemo(() => wyckoffPhase(wy.events, candles), [wy, candles]);
+  const lines = useMemo(() => trendlines(candles), [candles]);
+  const sr = useMemo(() => supportResistance(candles), [candles]);
+
+  const plan = useMemo(() => (ticker ? positionPlan(account.transactions, ticker) : null), [account.transactions, ticker]);
+  const levels = useMemo(() => effectiveLevels(plan, levelsFromThesis(theses, ticker)), [plan, theses, ticker]);
+  const position = plan ? { plan, levels } : null;
+
+  const rows = useMemo(() => {
+    const visible = full.slice(start);
+    return splitHeld(withTrendlines(visible, lines), plan?.startDate);
+  }, [full, start, lines, plan]);
+  const profile = useMemo(() => volumeProfile(rows), [rows]);
+  const events = useMemo(() => wy.events.filter((e) => e.idx >= start), [wy, start]);
+  const wyRange = useMemo(() => {
+    const r = wy.ranges[wy.ranges.length - 1];
+    if (!r || !candles.length) return null;
+    const sos = wy.events.find((e) => e.type === "SOS" && e.idx > r.arIdx);
+    const end = sos ? sos.idx : candles.length - 1;
+    return { from: candles[r.scIdx].date, to: candles[end].date, top: r.top, bottom: r.bottom };
+  }, [wy, candles]);
+
+  const last = rows[rows.length - 1];
+  const prev = rows[rows.length - 2];
+  const dayChg = last && prev ? last.close / prev.close - 1 : null;
+  const periodChg = rows.length > 1 ? last.close / rows[0].close - 1 : null;
+  const tickInterval = rows.length > 0 ? Math.max(0, Math.floor(rows.length / 8) - 1) : 0;
 
   const submit = (e) => {
     e.preventDefault();
@@ -145,118 +174,38 @@ export default function Chart() {
     if (t) setTicker(t);
   };
 
-  // ---- cálculos derivados ----
-  const enriched = useMemo(() => {
-    if (candles.length === 0) return [];
-    const closes = candles.map((c) => c.close);
-    const sma50 = sma(closes, 50);
-    const sma200 = sma(closes, 200);
-    const rsi14 = rsi(closes, 14);
-    const bb = bollinger(closes, 20, 2);
-    const obvArr = obv(candles);
-    return candles.map((c, i) => ({
-      ...c,
-      sma50: sma50[i],
-      sma200: sma200[i],
-      rsi14: rsi14[i],
-      bbUpper: bb[i].upper,
-      bbLower: bb[i].lower,
-      bbMid: bb[i].mid,
-      obv: obvArr[i],
-    }));
-  }, [candles]);
-
-  const events = useMemo(
-    () => (candles.length > 70 ? detectWyckoffEvents(candles) : []),
-    [candles]
-  );
-
-  // Quote header derivado.
-  const last = enriched[enriched.length - 1];
-  const prev = enriched[enriched.length - 2];
-  const dayChg = last && prev ? last.close - prev.close : null;
-  const dayChgPct = last && prev ? ((last.close - prev.close) / prev.close) * 100 : null;
-  const periodChg = enriched.length > 1
-    ? ((last.close - enriched[0].close) / enriched[0].close) * 100
-    : null;
-
-  // niveles únicos de eventos para dibujar ReferenceLines del último Spring/SOS.
-  const lastSpring = [...events].reverse().find((e) => e.type === "Spring");
-  const lastSos = [...events].reverse().find((e) => e.type === "SOS");
-
-  // Para que el eje X no esté abarrotado.
-  const tickInterval = enriched.length > 0 ? Math.max(0, Math.floor(enriched.length / 8) - 1) : 0;
-
   return (
     <div>
-      {/* SEARCH + RANGES */}
-      <div style={{ ...panel, marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ ...panel, marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <form onSubmit={submit} style={{ display: "flex", gap: 8 }}>
-          <input
-            value={tickerInput}
-            onChange={(e) => setTickerInput(e.target.value.toUpperCase())}
-            placeholder="Ticker (AAPL, NVDA, ^GSPC...)"
-            style={{ ...input, width: 220, textAlign: "left", fontSize: 13, padding: "6px 10px" }}
-          />
-          <button
-            type="submit"
-            className="dione-hover"
-            style={{ ...btn, color: C.accent, borderColor: C.accent, cursor: "pointer" }}
-          >
-            Buscar
-          </button>
+          <input value={tickerInput} onChange={(e) => setTickerInput(e.target.value.toUpperCase())} placeholder="Ticker (AAPL, NVDA, ^GSPC…)" style={{ ...input, width: 200, textAlign: "left", fontSize: 13, padding: "6px 10px" }} />
+          <button type="submit" style={{ ...btn, color: C.accent, borderColor: C.accent }}>Buscar</button>
         </form>
-
-        <div style={{ width: 1, height: 22, background: C.border, margin: "0 4px" }} />
-
-        {RANGES.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => setRange(r.id)}
-            className="dione-hover"
-            style={{
-              ...btn,
-              padding: "5px 11px",
-              fontSize: 10,
-              color: range === r.id ? C.bg : C.muted,
-              background: range === r.id ? C.accent : "transparent",
-              borderColor: range === r.id ? C.accent : C.border,
-              cursor: "pointer",
-            }}
-          >
-            {r.label}
-          </button>
-        ))}
-
-        <div style={{ flex: 1 }} />
-
-        {/* Toggles */}
-        <Toggle label="Wyckoff" active={showWyckoff} onClick={() => setShowWyckoff((v) => !v)} color={C.accent} />
-        <Toggle label="Bollinger" active={showBoll} onClick={() => setShowBoll((v) => !v)} color={C.blue} />
-        <Toggle label="OBV" active={showOBV} onClick={() => setShowOBV((v) => !v)} color={C.pos} />
+        <div style={{ display: "flex", gap: 4 }}>
+          {RANGES.map((r) => (
+            <button key={r.id} onClick={() => setRange(r.id)} style={{ ...btn, padding: "5px 10px", fontSize: 10, color: range === r.id ? C.bg : C.muted, background: range === r.id ? C.accent : "transparent", borderColor: range === r.id ? C.accent : C.border }}>{r.label}</button>
+          ))}
+        </div>
+        <Segmented options={[{ key: "line", label: "Línea" }, { key: "candles", label: "Velas" }]} value={prefs.mode} onChange={(mode) => setPrefs((p) => ({ ...p, mode }))} />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
+          {TOGGLES.map(([key, label, color]) => <Toggle key={key} label={label} active={show[key]} color={C[color]} onClick={() => setShow((s) => ({ ...s, [key]: !s[key] }))} />)}
+        </div>
       </div>
 
-      {/* QUOTE HEADER */}
       {ticker && (
-        <div style={{ ...panel, marginBottom: 14, display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
+        <div style={{ ...panel, marginBottom: 12, display: "flex", alignItems: "baseline", gap: 18, flexWrap: "wrap" }}>
           <div style={{ fontSize: 22, color: C.accent, fontWeight: 700, letterSpacing: "0.04em" }}>{ticker}</div>
           {last && (
             <>
-              <div style={{ fontSize: 22, color: C.text, fontVariantNumeric: "tabular-nums" }}>
-                {fmtPrice(last.close)}
-              </div>
-              <div style={{ fontSize: 13, color: (dayChg ?? 0) >= 0 ? C.pos : C.neg }}>
-                {(dayChg ?? 0) >= 0 ? "▲" : "▼"} {fmtPrice(Math.abs(dayChg ?? 0))} ({fmtPct(dayChgPct)})
-                <span style={{ color: C.muted, marginLeft: 8, fontSize: 10 }}>1d</span>
-              </div>
-              {periodChg != null && (
-                <div style={{ fontSize: 11, color: periodChg >= 0 ? C.pos : C.neg }}>
-                  Periodo: {fmtPct(periodChg)}
-                </div>
+              <div style={{ fontSize: 22, color: C.text, fontFamily: mono }}>{fmtPrice(last.close)}</div>
+              <div style={{ fontSize: 13, color: (dayChg ?? 0) >= 0 ? C.pos : C.neg, fontFamily: mono }}>{fmtPct(dayChg)} <span style={{ color: C.muted, fontSize: 10 }}>1d</span></div>
+              <div style={{ fontSize: 11, color: (periodChg ?? 0) >= 0 ? C.pos : C.neg, fontFamily: mono }}>período {fmtPct(periodChg)}</div>
+              {phase && (
+                <span title={`desde ${phase.since}`} style={{ fontFamily: mono, fontSize: 10.5, padding: "2px 8px", border: `1px solid ${WYCKOFF_COLORS.SOS}`, color: WYCKOFF_COLORS.SOS }}>
+                  WYCKOFF {phase.phase ? `FASE ${phase.phase}` : ""} · {phase.label}
+                </span>
               )}
-              <div style={{ fontSize: 10, color: C.muted, marginLeft: "auto" }}>
-                {enriched.length} barras · al {last.date}
-              </div>
+              <div style={{ fontSize: 10, color: C.muted, marginLeft: "auto", fontFamily: mono }}>{rows.length} sesiones · al {last.date}</div>
             </>
           )}
           {loading && <span style={{ fontSize: 11, color: C.muted }}>Cargando…</span>}
@@ -264,241 +213,77 @@ export default function Chart() {
         </div>
       )}
 
-      {/* PRICE CHART */}
-      {enriched.length > 0 && (
-        <Panel
-          title={`PRECIO · SMA 50/200${showBoll ? " · BOLLINGER 20,2" : ""}`}
-          right={
-            showWyckoff && events.length > 0 ? (
-              <span style={{ fontSize: 10, color: C.muted }}>
-                {events.length} eventos Wyckoff detectados
-              </span>
-            ) : null
-          }
-        >
-          <ResponsiveContainer width="100%" height={380}>
-            <ComposedChart data={enriched} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-              <XAxis
-                dataKey="date"
-                stroke={C.muted}
-                fontSize={10}
-                interval={tickInterval}
-                tick={{ fill: C.muted }}
-              />
-              <YAxis
-                stroke={C.muted}
-                fontSize={10}
-                domain={["auto", "auto"]}
-                tick={{ fill: C.muted }}
-                tickFormatter={(v) => v.toFixed(0)}
-              />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={tooltipLabelStyle}
-                formatter={(v, n) => [typeof v === "number" ? v.toFixed(2) : v, n]}
-              />
+      {position && last && show.position && <PositionStrip plan={plan} levels={levels} price={last.close} accountLabel={ACCOUNTS[activeId].label} />}
 
-              {/* Bollinger bands (debajo del precio para que no tapen) */}
-              {showBoll && (
-                <>
-                  <Line type="monotone" dataKey="bbUpper" stroke={C.blue} strokeWidth={1} strokeDasharray="3 3" dot={false} name="BB upper" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="bbLower" stroke={C.blue} strokeWidth={1} strokeDasharray="3 3" dot={false} name="BB lower" isAnimationActive={false} />
-                  <Line type="monotone" dataKey="bbMid" stroke={C.blue} strokeWidth={0.6} strokeOpacity={0.5} dot={false} name="BB mid" isAnimationActive={false} />
-                </>
-              )}
-
-              <Line type="monotone" dataKey="close" stroke={C.accent} strokeWidth={1.6} dot={false} name="Close" isAnimationActive={false} />
-              <Line type="monotone" dataKey="sma50" stroke={C.blue} strokeWidth={1} dot={false} name="SMA 50" isAnimationActive={false} />
-              <Line type="monotone" dataKey="sma200" stroke={C.amber} strokeWidth={1} dot={false} name="SMA 200" isAnimationActive={false} />
-
-              {/* Niveles de soporte/breakout de últimos eventos clave */}
-              {showWyckoff && lastSpring && (
-                <ReferenceLine
-                  y={lastSpring.level}
-                  stroke={WYCKOFF_COLORS.Spring}
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.6}
-                  label={{ value: `Spring lvl ${lastSpring.level.toFixed(2)}`, position: "insideTopLeft", fill: WYCKOFF_COLORS.Spring, fontSize: 9 }}
-                />
-              )}
-              {showWyckoff && lastSos && (
-                <ReferenceLine
-                  y={lastSos.level}
-                  stroke={WYCKOFF_COLORS.SOS}
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.6}
-                  label={{ value: `SOS breakout ${lastSos.level.toFixed(2)}`, position: "insideBottomLeft", fill: WYCKOFF_COLORS.SOS, fontSize: 9 }}
-                />
-              )}
-
-              {/* Wyckoff event markers */}
-              {showWyckoff && events.map((ev, i) => (
-                <ReferenceDot
-                  key={`${ev.type}-${i}`}
-                  x={ev.date}
-                  y={ev.price}
-                  r={4}
-                  fill={WYCKOFF_COLORS[ev.type] || C.accent}
-                  stroke={C.bg}
-                  strokeWidth={1}
-                  label={{
-                    value: ev.type,
-                    position: ev.type === "SC" || ev.type === "ST" || ev.type === "Spring" || ev.type === "LPS" ? "bottom" : "top",
-                    fill: WYCKOFF_COLORS[ev.type] || C.text,
-                    fontSize: 9,
-                    fontWeight: 600,
-                  }}
-                  ifOverflow="extendDomain"
-                />
-              ))}
-
-              <Legend wrapperStyle={{ fontSize: 10, color: C.muted }} iconSize={8} />
-            </ComposedChart>
-          </ResponsiveContainer>
+      {rows.length > 0 && (
+        <Panel title={`Precio · ${prefs.mode === "candles" ? "velas" : "línea"} · SMA 50 (azul) / 200 (ámbar)`} right={show.wyckoff ? `${events.length} eventos Wyckoff` : null}>
+          <PriceChart rows={rows} mode={prefs.mode} show={show} events={events} wyRange={wyRange} sr={sr} profile={profile} position={position} tickInterval={tickInterval} />
         </Panel>
       )}
 
-      {/* RSI */}
-      {enriched.length > 14 && (
+      {rows.length > 0 && (
+        <Panel
+          title={prefs.vol === "abs" ? "Volumen" : `Volumen relativo · ${rvolPeriod} sesiones previas`}
+          right={<Segmented options={[{ key: "rvol20", label: "RVOL 20" }, { key: "rvol10", label: "RVOL 10" }, { key: "abs", label: "Volumen" }]} value={prefs.vol} onChange={(vol) => setPrefs((p) => ({ ...p, vol }))} />}
+          style={{ marginTop: 12 }}
+        >
+          <VolumePanel rows={rows} mode={prefs.vol === "abs" ? "abs" : "rvol"} period={rvolPeriod} tickInterval={tickInterval} />
+          <div style={{ fontFamily: mono, fontSize: 10, color: C.muted, marginTop: 4 }}>
+            RVOL = volumen del día ÷ promedio de las {rvolPeriod} sesiones anteriores. Wyckoff usa 20 (WYCKOFF_FRAMEWORK.md); 10 reacciona más rápido. Barras intensas: RVOL ≥ 1.5.
+          </div>
+        </Panel>
+      )}
+
+      {rows.length > 14 && (
         <Panel title="RSI 14" style={{ marginTop: 12 }}>
-          <ResponsiveContainer width="100%" height={130}>
-            <LineChart data={enriched} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
               <XAxis dataKey="date" stroke={C.muted} fontSize={10} interval={tickInterval} tick={{ fill: C.muted }} />
-              <YAxis stroke={C.muted} fontSize={10} domain={[0, 100]} ticks={[0, 30, 50, 70, 100]} tick={{ fill: C.muted }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} formatter={(v) => (typeof v === "number" ? v.toFixed(1) : v)} />
+              <YAxis stroke={C.muted} fontSize={10} width={52} domain={[0, 100]} ticks={[30, 50, 70]} tick={{ fill: C.muted }} />
+              <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, fontSize: 11 }} formatter={(v) => (typeof v === "number" ? v.toFixed(1) : v)} />
               <ReferenceLine y={70} stroke={C.neg} strokeDasharray="3 3" strokeOpacity={0.6} />
               <ReferenceLine y={30} stroke={C.pos} strokeDasharray="3 3" strokeOpacity={0.6} />
-              <Line type="monotone" dataKey="rsi14" stroke={C.accent} strokeWidth={1.2} dot={false} isAnimationActive={false} />
+              <Line dataKey="rsi14" stroke={C.accent} strokeWidth={1.2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </Panel>
       )}
 
-      {/* VOLUME */}
-      {enriched.length > 0 && (
-        <Panel title="VOLUMEN" style={{ marginTop: 12 }}>
-          <ResponsiveContainer width="100%" height={130}>
-            <BarChart data={enriched} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+      {show.obv && rows.length > 1 && (
+        <Panel title="OBV · On-Balance Volume" style={{ marginTop: 12 }}>
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
               <XAxis dataKey="date" stroke={C.muted} fontSize={10} interval={tickInterval} tick={{ fill: C.muted }} />
-              <YAxis stroke={C.muted} fontSize={10} tickFormatter={fmtVol} tick={{ fill: C.muted }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} formatter={(v) => fmtVol(v)} />
-              <Bar dataKey="volume" fill={C.border} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Panel>
-      )}
-
-      {/* OBV */}
-      {showOBV && enriched.length > 1 && (
-        <Panel title="OBV — ON-BALANCE VOLUME" style={{ marginTop: 12 }}>
-          <ResponsiveContainer width="100%" height={130}>
-            <LineChart data={enriched} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-              <XAxis dataKey="date" stroke={C.muted} fontSize={10} interval={tickInterval} tick={{ fill: C.muted }} />
-              <YAxis stroke={C.muted} fontSize={10} tickFormatter={fmtVol} tick={{ fill: C.muted }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} formatter={(v) => fmtVol(v)} />
-              <Line type="monotone" dataKey="obv" stroke={C.pos} strokeWidth={1.2} dot={false} isAnimationActive={false} />
+              <YAxis stroke={C.muted} fontSize={10} width={52} tickFormatter={fmtVol} tick={{ fill: C.muted }} domain={["auto", "auto"]} />
+              <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, fontSize: 11 }} formatter={(v) => fmtVol(v)} />
+              <Line dataKey="obv" stroke={C.pos} strokeWidth={1.2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </Panel>
       )}
 
-      {/* Tabla de eventos Wyckoff detectados */}
-      {showWyckoff && events.length > 0 && (
-        <Panel
-          title={`EVENTOS WYCKOFF — ${events.length}`}
-          style={{ marginTop: 12 }}
-          right={<span style={{ fontSize: 10, color: C.muted }}>SC · AR · ST · Spring · SOS · LPS</span>}
-        >
-          <div style={{ overflowX: "auto", margin: -16 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                  <th style={cellHead}>Tipo</th>
-                  <th style={cellHead}>Fecha</th>
-                  <th style={{ ...cellHead, textAlign: "right" }}>Precio</th>
-                  <th style={{ ...cellHead, textAlign: "right" }}>Nivel</th>
-                  <th style={{ ...cellHead, textAlign: "left" }}>Detalle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.slice().reverse().map((ev, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ ...cell, paddingLeft: 16, color: WYCKOFF_COLORS[ev.type], fontWeight: 700 }}>{ev.type}</td>
-                    <td style={{ ...cell, color: C.muted, fontSize: 10 }}>{ev.date}</td>
-                    <td style={{ ...cell, textAlign: "right" }}>{fmtPrice(ev.price)}</td>
-                    <td style={{ ...cell, textAlign: "right", color: C.muted }}>{ev.level ? fmtPrice(ev.level) : "—"}</td>
-                    <td style={{ ...cell, textAlign: "left", color: C.muted, fontSize: 10 }}>{ev.note || ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      )}
-
-      {/* Estado vacío */}
-      {!ticker && (
-        <div style={{ ...panel, textAlign: "center", padding: "48px 24px" }}>
-          <div style={{ fontSize: 28, marginBottom: 12, color: C.muted }}>◎</div>
-          <div style={{ fontSize: 13, color: C.text }}>Buscá un ticker para arrancar.</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
-            Datos vía Yahoo Finance · indicadores client-side · Wyckoff detectado sobre 70+ barras.
-          </div>
+      {rows.length > 0 && (
+        <div className="dione-grid-2" style={{ marginTop: 12 }}>
+          {show.wyckoff ? <WyckoffTable events={events} phase={phase} /> : <div />}
+          <LevelsTable sr={sr} lines={lines} profile={profile} price={last?.close} />
         </div>
       )}
 
-      {/* Leyenda Wyckoff */}
-      {showWyckoff && enriched.length > 0 && (
-        <div style={{ marginTop: 14, fontSize: 10, color: C.muted, lineHeight: 1.7 }}>
-          <b style={{ color: C.text }}>SC</b> Selling Climax · range &gt; 2.5×ATR(14) y volumen &gt; 2.5× promedio en bottom de downtrend.{" "}
-          <b style={{ color: C.text }}>AR</b> Automatic Rally · rebote ≥10% en 5–15 días post-SC.{" "}
-          <b style={{ color: C.text }}>ST</b> Secondary Test · retest del SC ±5% con vol &lt; 70% del SC.{" "}
-          <b style={{ color: C.text }}>Spring</b> close bajo min(60d) con vol bajo y recovery en 1–5 días.{" "}
-          <b style={{ color: C.text }}>SOS</b> Sign of Strength · breakout con vol &gt; 1.5× promedio y close cerca del high.{" "}
-          <b style={{ color: C.text }}>LPS</b> Last Point of Support · pullback post-SOS con vol bajo.
+      {show.wyckoff && rows.length > 0 && (
+        <div style={{ marginTop: 12, fontSize: 10.5, color: C.muted, lineHeight: 1.7 }}>
+          <b style={{ color: C.text }}>Cómo leerlo.</b> RVOL = volumen ÷ promedio de las 20 sesiones previas.{" "}
+          <b style={{ color: WYCKOFF_COLORS.SC }}>SC</b> rango &gt; 2.5 ATR y RVOL &gt; 2.5 en tendencia bajista ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.AR }}>AR</b> rebote ≥ 10% a los 5–15 días ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.ST }}>ST</b> vuelve al mínimo del SC con menos del 70% de su volumen ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.Spring }}>Spring</b> rompe el mínimo de 60 sesiones y recupera en 1–5 días; el volumen solo lo clasifica (seco, moderado, shakeout) ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.Test }}>Test</b> primera vuelta a la zona del Spring sin nuevo mínimo y cerrando en la mitad superior: entrada al cierre, stop bajo el Spring ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.SOS }}>SOS</b> rompe el máximo de 20 sesiones con RVOL &gt; 1.5 ·{" "}
+          <b style={{ color: WYCKOFF_COLORS.LPS }}>LPS</b> retroceso con RVOL &lt; 0.85 sobre el nivel roto.
+          Desde v4 Wyckoff es descriptivo: no puntúa ni elige acciones (TECHNICAL_VALIDATED.md).
         </div>
       )}
     </div>
   );
 }
-
-// ---- subcomponentes ----
-
-function Toggle({ label, active, onClick, color }) {
-  return (
-    <button
-      onClick={onClick}
-      className="dione-hover"
-      style={{
-        ...btn,
-        padding: "5px 11px",
-        fontSize: 10,
-        color: active ? C.bg : color,
-        background: active ? color : "transparent",
-        borderColor: color,
-        cursor: "pointer",
-      }}
-    >
-      {active ? "● " : "○ "}{label}
-    </button>
-  );
-}
-
-const cellHead = {
-  color: C.muted,
-  fontSize: 10,
-  fontWeight: 600,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  padding: "8px",
-  textAlign: "left",
-};
-const cell = {
-  fontSize: 12,
-  padding: "6px 8px",
-  fontVariantNumeric: "tabular-nums",
-};

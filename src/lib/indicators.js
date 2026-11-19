@@ -113,3 +113,18 @@ export function rollingMax(arr, period) {
     return isFinite(m) ? m : null;
   });
 }
+
+// Volumen relativo (RVOL): volumen del día dividido por el promedio de las
+// `period` sesiones ANTERIORES (sin contar el día). Es la base que usa
+// WYCKOFF_FRAMEWORK.md: avg(volume[t-period:t-1]). null si falta historia.
+export function relVolume(volumes, period = 20) {
+  return volumes.map((v, i) => {
+    if (i < period || v == null) return null;
+    let sum = 0;
+    for (let j = i - period; j < i; j++) {
+      if (volumes[j] == null) return null;
+      sum += volumes[j];
+    }
+    return sum > 0 ? v / (sum / period) : null;
+  });
+}

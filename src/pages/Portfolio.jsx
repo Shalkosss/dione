@@ -14,6 +14,7 @@ import MandatePanel from "../components/portfolio/MandatePanel.jsx";
 import BenchmarkEditor from "../components/portfolio/BenchmarkEditor.jsx";
 import { Positions, Blotter } from "../components/portfolio/Positions.jsx";
 import SyncBar from "../components/portfolio/SyncBar.jsx";
+import PositionMonitor from "../components/portfolio/PositionMonitor.jsx";
 
 const signedPct = (v, d = 2) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
 const tone = (v) => (v == null ? C.muted : v >= 0 ? C.pos : C.neg);
@@ -89,6 +90,12 @@ export default function Portfolio() {
     setParams({}, { replace: true });
   }, [urlTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Desde el Chart ("editar en Portafolio") se llega con #seguimiento.
+  const hasPositions = (data.valued?.rows.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasPositions && window.location.hash === "#seguimiento") document.getElementById("seguimiento")?.scrollIntoView({ behavior: "smooth" });
+  }, [hasPositions]);
+
   const fallbackValued = useMemo(() => ({ total: account.initialCash, cash: account.initialCash, rows: [] }), [account.initialCash]);
   const valued = data.valued || fallbackValued;
 
@@ -143,7 +150,9 @@ export default function Portfolio() {
         <SectorTilt valued={valued} />
       </div>
 
-      {notice && data.hasTrades && <div style={{ ...panel, borderColor: C.amber, color: C.amber, marginBottom: 12, fontSize: 12 }}>{notice}</div>}
+      {data.hasTrades && <PositionMonitor valued={valued} prices={data.prices} nav={valued.total} />}
+
+      {notice && data.hasTrades &&<div style={{ ...panel, borderColor: C.amber, color: C.amber, marginBottom: 12, fontSize: 12 }}>{notice}</div>}
       <Blotter transactions={account.transactions} onRemove={handleRemove} />
 
       {data.hasTrades && (

@@ -16,7 +16,8 @@ export default defineConfig(({ mode }) => {
 
         // Ejecuta la misma función de Vercel (Yahoo sin key; Finnhub opcional).
         if (env.FINNHUB_KEY) process.env.FINNHUB_KEY = env.FINNHUB_KEY;
-        req.query = { ticker: decodeURIComponent(match[1]) };
+        const qs = new URLSearchParams(req.url.split("?")[1] || "");
+        req.query = { ...Object.fromEntries(qs), ticker: decodeURIComponent(match[1]) };
         res.status = (code) => { res.statusCode = code; return res; };
         res.json = (obj) => {
           res.setHeader("Content-Type", "application/json");
