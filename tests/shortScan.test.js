@@ -260,3 +260,12 @@ describe('salud sin datos de margen', () => {
     expect(scoreShort(bio, { sectors: SECTORS }).excluded).toMatch(/binario/);
   });
 });
+
+describe('largo del par', () => {
+  it('no usa una empresa chica o ilíquida como largo', () => {
+    const tiny = normalizeShortRow({ ...LONG, symbol: 'TINY', marketCap: 1.1e9 });
+    const r = buildShortScan([normalizeShortRow(WEAK), tiny], { sectors: SECTORS });
+    expect(r.pairs[0].long).toBeNull();
+    expect(r.pairs[0].hedgeEtf).toBe('XLK');
+  });
+});
