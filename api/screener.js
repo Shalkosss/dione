@@ -38,6 +38,9 @@
 //   /api/regime    → mode=regime   SPY contra SMA200, VIX y amplitud
 //   megacap=1      → solo megacaps, pasen o no el gate
 //   /api/universe  → mode=universe todas las empresas comunes de NYSE y Nasdaq
+//   mode=short     scan short (lib/shortScan.js): deterioro fundamental, tendencia rota y
+//                  sector débil sobre snapshot + universo, con pares neutrales por sector.
+//                  ?minScore=50&perSector=3&limit=25
 //                                   (fila 'universe', cron 12:00 UTC). Parámetros
 //                                   en lib/marketUniverse.js (queryUniverse)
 
@@ -45,6 +48,7 @@ import { readSnapshot, readRow, readRowField } from '../lib/store.js';
 import { SCAN_MODES, buildScanResponse } from '../lib/scanApi.js';
 import { queryUniverse, withTrend } from '../lib/marketUniverse.js';
 import { UNIVERSE_TECH_PARTS } from '../lib/universeTech.js';
+import { buildShortScan, mergeUniverse, normalizeShortRow, THRESHOLDS } from '../lib/shortScan.js';
 
 const TECH_IDS = Array.from({ length: UNIVERSE_TECH_PARTS }, (_, i) => `universe_tech_${i + 1}`);
 // Una tanda que falla no tumba la respuesta: se sigue sin ella.
@@ -72,6 +76,7 @@ export default async function handler(req, res) {
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
       return res.status(200).json({ ...buildScanResponse(snap, mode, { perSector, partMetas }), ...(mode === 'regime' ? {} : { macroView }) });
     }
+    if (mode === 'short') return await handleShort(q, res);
     if (mode === 'universe') {
       let row;
       let techRows = [];
@@ -301,6 +306,34 @@ export default async function handler(req, res) {
 }
 
 // El ranking técnico usa el score de tendencia v4; v3 queda como histórico.
+async function handleShort(q, res) {
+  const [snap, uni, ...techRows] = await Promise.all([
+    readSnapshot(), safe(readRow('universe')), ...TECH_IDS.map((id) => safe(readRow(id))),
+  ]);
+  if (!snap?.gems) return res.status(503).json({ error: 'snapshot todavía no generado — corré /api/cron/refresh-gems' });
+  const universe = uni?.rows ? withTrend(uni.rows, techRows) : [];
+  const rows = mergeUniverse(snap.gems, universe).map(normalizeShortRow);
+  const opts = {
+    sectors: snap.meta?.market?.sectors ?? [],
+    minScore: num(q.minScore, THRESHOLDS.watch),
+    perSector: Math.max(1, Math.min(num(q.perSector, 3), 10)),
+    limit: Math.max(1, Math.min(num(q.limit, 25), 100)),
+  };
+  const result = buildShortScan(rows, opts);
+  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+  return res.status(200).json({
+    meta: {
+      mode: 'short',
+      regime: snap.meta?.market?.regime ?? null,
+      updatedAt: { fundamentals: snap.meta?.updatedAt ?? null, technical: snap.meta?.technicalUpdatedAt ?? null, universe: uni?.meta?.updatedAt ?? null },
+      filters: { minScore: opts.minScore, perSector: opts.perSector, limit: opts.limit },
+      thresholds: THRESHOLDS,
+      missing: ['short interest', 'días para cubrir', 'costo de préstamo', 'Beneish', 'catalizadores binarios'],
+    },
+    ...result,
+  });
+}
+
 function defaultSort(mode) {
   if (mode === 'technical') return 'trend';
   if (mode === 'combo') return 'combo';

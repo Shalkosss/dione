@@ -1,11 +1,5 @@
 # SHORT FRAMEWORK
 
-[CAMBIOS vs versión anterior: eliminada toda referencia a
-`/api/screener?mode=short` (no existe). `/scan-short` hoy se ejecuta
-como scan manual sobre watchlist + megacaps en deterioro hasta Fase 3.
-Anti-trap #9 reemplazado: "Short by analogy" eliminado por vago;
-sustituido por "Short sin defensa de pre-mortem" con criterio concreto.]
-
 Tesis bajistas con sustento estructural. Familia simétrica de los
 comandos bullish.
 
@@ -43,22 +37,40 @@ sobrevaluados con earnings decay**.
 
 ---
 
-## EJECUCIÓN DEL SCAN HOY (sin endpoint dedicado)
+## EJECUCIÓN DEL SCAN (v1, 20-nov-2026)
 
-`/api/screener` **NO tiene** `mode=short`. Hasta Fase 3, `/scan-short`
-se ejecuta así:
+`/api/screener?mode=short` (`lib/shortScan.js`) y `npm run scan:short`
+(`scripts/scan-short.mjs`). Universo: snapshot de calidad (métricas
+completas) más NYSE y Nasdaq (fila `universe`, tendencia de las tandas).
 
-1. **Universo de entrada**: watchlist + megacaps en deterioro
-   (`/scan-fundamental` con preScore bajo + Beneish elevado, o paste
-   manual desde Bloomberg `EQS` / sector screens).
-2. **DIONE computa el Composite Short Score on-the-fly** sobre ese set,
-   pidiendo candles y métricas vía `/api/quote` + Finnhub directo
-   (`/stock/insider-transactions`, `/stock/recommendation`).
-3. **Output**: top N candidatos con breakdown.
+Score v1 sobre 100 con los datos que hay hoy (el composite de abajo es el
+objetivo cuando existan las fuentes que faltan):
 
-Cuando Fase 3 active el cron de short scoring (espejo del fundamental,
-con Beneish + Altman + accruals + insider selling agregados), se va a
-poder hacer `/api/screener?mode=short`.
+| Bloque | Máx | Qué suma |
+|---|---|---|
+| Deterioro fundamental | 35 | Piotroski ≤3 (8) o 4 (4) · Altman Z <1,81 (7) o <3 (3) · FCF ≤0 (6) · margen neto u operativo negativo (5) · D/E >2 (5) o >1 (2) · no pasa el gate (4) |
+| Tendencia rota | 30 | trendScore ≤20 (10), ≤35 (6), ≤50 (2) · bajo SMA200 (6) · SMA50 bajo SMA200 (4) · momentum 12-1 negativo (5) · fuerza relativa 63d negativa contra su ETF (5) |
+| Sector débil | 15 | ETF del sector bajo su SMA200 (8) · RS 3m negativa (7) |
+| Smart money | 15 | Insiders netos vendedores >$1M sin compras (8) o netos vendedores (4) · analistas bajando (4). Lo suma el script con `/api/smart-money` (top 100) |
+| Valuación | 5 | P/E >40 (5), >25 (2), pérdidas sin P/E (3) |
+
+Filtros duros: cap ≥ $2B, volumen diario ≥ $50M, precio ≥ $10. Anti-traps
+automáticos: compounder de calidad (gate, Piotroski ≥7, preScore ≥70) no se
+shortea; deterioro fundamental <15 se descarta; RSI <30 o más de 15% bajo la
+SMA50 = `EXTENDIDA`, veredicto ESPERAR REBOTE con entrada en la SMA50.
+Plan: stop a 2 ATR (8% sin ATR), objetivo a 3R.
+
+Pares market neutral (idea del AQR Apex, selección dentro de la industria):
+cada corto se empareja con el mejor largo de calidad y tendencia del mismo
+sector (gate, preScore ≥70, trendScore ≥60, sobre SMA200), con montos que
+igualan volatilidad. Sin largo, se cubre con el ETF del sector.
+`--account paper --net 0.5` calcula la beta de la cartera (252 sesiones contra
+SPY) y el corto equivalente para bajarla al objetivo.
+
+No hay en los datos: short interest, días para cubrir, costo de préstamo,
+Beneish ni catalizadores binarios. Se verifican a mano en el broker antes de
+abrir. El score es un filtro, no alfa probado: la Fase 4 no encontró señal en
+tendencia ni calidad por separado (`SMALLMID_2026-11.md`, `QUALITY_2026-11.md`).
 
 ---
 
@@ -123,7 +135,7 @@ poder hacer `/api/screener?mode=short`.
 ## COMANDOS
 
 ### `/scan-short [limit=N]`
-Top N candidatos. Hoy: scan manual descrito arriba.
+Top N candidatos: `npm run scan:short` o `/api/screener?mode=short`.
 Filtros opt: `cap=large|mega`, `sector=`, `phase=C` (solo UTAD).
 
 ### `/short TICKER`

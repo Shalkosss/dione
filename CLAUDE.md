@@ -51,7 +51,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
 | `migrations/` | SQL para pegar en el editor de Supabase, numerado |
 | `tests/` | Tests de vitest |
-| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-import`, `ledger-order`, `thesis-backfill-check`) |
+| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-import`, `ledger-order`, `scan-short`, `thesis-backfill-check`) |
 | `.claude/skills/` | Skills del proyecto: `deep` (corre `/deep` con datos en vivo y sube la tesis) y `orden` (registra una compra o venta que el usuario reporta) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
 | `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`, `megacap_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
@@ -94,6 +94,7 @@ las mismas reglas y lo sube con su versión; el navegador lo adopta al sincroniz
 | `GET /api/scan` | Rewrite a `/api/screener?mode=scan`: régimen, tablero sectorial, descubrimiento (máx. 3 por sector), megacaps y marcas semanales (`lib/scanApi.js`) |
 | `GET /api/sectors`, `GET /api/regime` | Rewrites a `mode=sectors` y `mode=regime`. Los calcula `refresh-technical` y quedan en `meta.market` |
 | `GET /api/universe` | Rewrite a `/api/screener?mode=universe`: todas las empresas comunes de NYSE y Nasdaq (~6.000, fila `universe`) con el gate como etiqueta, lista de espera y piso de $3 y $300M. Filtros en `lib/marketUniverse.js` (`queryUniverse`). Contexto, no candidatas |
+| `GET /api/screener?mode=short` | Scan short v1 (`lib/shortScan.js`, `SHORT_FRAMEWORK.md`): deterioro fundamental, tendencia rota, sector débil y valuación sobre snapshot más universo, plan con stop a 2 ATR y pares neutrales por sector. `npm run scan:short` le suma smart money y, con `--account`, la cobertura por beta de la cartera |
 | `GET /api/smart-money` | Snapshot de insiders (Form 4 de EDGAR) y analistas (Finnhub, opcional). `?ticker=` para uno solo |
 | `GET /api/quote/[ticker]` | Cotización vía Yahoo chart v8, sin key. Finnhub solo de respaldo si hay `FINNHUB_KEY`. Con `?news=1` devuelve titulares de Yahoo (`lib/news.js`) |
 | `GET /api/candles/[ticker]` | Proxy de velas de Yahoo, sin key |
