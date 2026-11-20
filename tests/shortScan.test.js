@@ -209,3 +209,47 @@ describe('datos parciales', () => {
     expect(s.flags).toContain('DATOS_PARCIALES');
   });
 });
+
+import { trendInputsFromCandles, withCandleInputs } from '../lib/shortScan.js';
+
+describe('exclusiones v1.1', () => {
+  it('excluye fondos y trusts', () => {
+    expect(scoreShort(normalizeShortRow({ ...WEAK, name: 'SPDR Gold Trust' }), { sectors: SECTORS }).excluded).toMatch(/fondo/);
+  });
+
+  it('en financieras no cuentan deuda, FCF ni gate: sin datos suficientes', () => {
+    const bank = normalizeShortRow({ ...WEAK, gicsSector: 'Financials', metrics: { fcfYield: -0.1, debtToEquity: 9, netMargin: 0.2 } });
+    expect(scoreShort(bank, { sectors: SECTORS }).excluded).toMatch(/insuficientes/);
+  });
+
+  it('salud sin ganancias es riesgo binario', () => {
+    const bio = normalizeShortRow({ ...WEAK, gicsSector: 'Health Care' });
+    expect(scoreShort(bio, { sectors: SECTORS }).excluded).toMatch(/binario/);
+  });
+});
+
+describe('trendInputsFromCandles', () => {
+  const mk = (closes) => closes.map((c, i) => ({ date: `d${i}`, h: c * 1.01, l: c * 0.99, c }));
+
+  it('serie que cae: bajo las medias, momentum y RSI bajos', () => {
+    const closes = Array.from({ length: 300 }, (_, i) => 100 * 0.997 ** i);
+    const t = trendInputsFromCandles(mk(closes), mk(Array(300).fill(50)));
+    expect(t.distSma50).toBeLessThan(0);
+    expect(t.distSma200).toBeLessThan(t.distSma50);
+    expect(t.mom12_1).toBeLessThan(0);
+    expect(t.rsi14).toBeLessThan(5);
+    expect(t.rsDiff63).toBeLessThan(0);
+    expect(t.atr14).toBeGreaterThan(0);
+  });
+
+  it('pocas velas devuelve vacío', () => {
+    expect(trendInputsFromCandles(mk([1, 2, 3]))).toEqual({});
+  });
+
+  it('withCandleInputs no pisa lo que la fila ya tenía', () => {
+    const row = normalizeShortRow({ ...WEAK });
+    const out = withCandleInputs(row, { atr14: 99, rsi14: 10 });
+    expect(out.trendInputs.atr14).toBe(1.6);
+    expect(row.trendInputs.atr14).toBe(1.6);
+  });
+});

@@ -15,7 +15,7 @@
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseEnvFile } from '../lib/thesisImport.js';
-import { applySmartMoney, betaFromCloses, hedgeNeeded } from '../lib/shortScan.js';
+import { betaFromCloses, hedgeNeeded, scoreShort, shortPlan, trendInputsFromCandles, withCandleInputs } from '../lib/shortScan.js';
 import { accountState } from '../lib/ledger.js';
 import { fetchCandlesBatch } from '../lib/yahoo.js';
 import { toDailyCandles } from '../lib/thesisRefresh.js';
@@ -80,19 +80,47 @@ async function portfolioHedge(base, token, accountId, targetNet) {
   return { positions, cash: state.cash, totalValue, ...hedgeNeeded(positions, { totalValue, targetNet }) };
 }
 
+// Velas de Yahoo para los candidatos (y los ETFs de su sector): ATR, RSI,
+// medias y fuerza relativa que el universo no trae. Re-puntúa con todo.
+async function enrich(scan, sm) {
+  const sectors = scan.meta?.sectors || [];
+  const etfs = [...new Set(scan.candidates.map((c) => c.sectorEtf).filter(Boolean))];
+  const longs = scan.pairs.map((p) => p.long).filter(Boolean);
+  const symbols = [...new Set([...scan.candidates.map((c) => c.symbol), ...etfs, ...longs])];
+  const raw = await fetchCandlesBatch(symbols, { days: 420, concurrency: 5, throttleMs: 150 });
+  const candles = (s) => toDailyCandles(raw.get(s));
+  enrich.atrPct = Object.fromEntries(symbols.map((s) => {
+    const t = trendInputsFromCandles(candles(s));
+    const last = candles(s).at(-1)?.c;
+    return [s, t.atr14 && last ? t.atr14 / last : null];
+  }));
+  return scan.candidates.map((c) => {
+    const row = withCandleInputs(c.row, trendInputsFromCandles(candles(c.symbol), c.sectorEtf ? candles(c.sectorEtf) : []));
+    const s = scoreShort(row, { sectors, smartMoney: sm });
+    if (s.excluded) return { ...c, score: 0 };
+    return { ...c, row, score: s.score, verdict: s.verdict, breakdown: s.breakdown, flags: s.flags, plan: shortPlan(row, s.flags) };
+  });
+}
+
+function withVolRatio(pair, enriched) {
+  const vs = enrich.atrPct?.[pair.short];
+  const vl = pair.long ? enrich.atrPct?.[pair.long] : enrich.atrPct?.[pair.hedgeEtf];
+  return vs && vl ? { ...pair, longPerShort: Math.round((vs / vl) * 100) / 100 } : pair;
+}
+
 function printScan(scan, opts) {
   const r = scan.meta?.regime;
   out(`Régimen: ${r?.label ?? '—'} · VIX ${r?.vix?.toFixed?.(1) ?? '—'} · SPY ${pct(r?.spyDist, 1)} de la SMA200 · amplitud ${pct(r?.breadth)}`);
   out(`Escaneadas ${scan.scanned} · excluidas ${JSON.stringify(scan.excluded)} · mínimo ${opts.min}`);
   out(`Faltan (verificar en el broker): ${(scan.meta?.missing || []).join(', ')}\n`);
-  out('Ticker  Score Veredicto       Sector  F  T  S SM  V  Tend  Entrada   Stop  Objetivo  Banderas');
+  out('Ticker  Score Veredicto       Sector  F  T  S SM  V  Tend  RSI  Entrada   Stop  Objetivo  Banderas');
   for (const c of scan.candidates) {
     const b = c.breakdown;
     out([
       c.symbol.padEnd(7), String(c.score).padStart(5), ' ', c.verdict.padEnd(15), (c.sectorEtf || '—').padEnd(6),
       String(b.fundamental).padStart(2), String(b.technical).padStart(2), String(b.sector).padStart(2),
-      String(b.smartMoney).padStart(2), String(b.valuation).padStart(2), String(c.trendScore ?? '—').padStart(5),
-      String(c.plan.entry).padStart(9), String(c.plan.stop).padStart(7), String(c.plan.target).padStart(9), ' ', c.flags.join(','),
+      String(b.smartMoney).padStart(2), String(b.valuation).padStart(2), String(c.trendScore ?? '—').padStart(5), String(c.row?.trendInputs?.rsi14 != null ? Math.round(c.row.trendInputs.rsi14) : '—').padStart(4),
+      String(c.plan.entry).padStart(9), String(c.plan.stop).padStart(7), String(c.plan.target).padStart(9), ' ', c.flags.filter((f) => f !== 'SIN_SMART_MONEY').join(','),
     ].join(' '));
   }
   out('\nPares neutrales (corto / largo del mismo sector, montos por volatilidad):');
@@ -109,13 +137,13 @@ async function main() {
     getJson(`${base}/api/screener?mode=short&minScore=0&perSector=${opts.perSector}&limit=100`),
     smartMoneyMap(base),
   ]);
-  const candidates = scan.candidates
-    .map((c) => applySmartMoney(c, sm[c.symbol]))
+  const enriched = await enrich(scan, sm);
+  const candidates = enriched
     .filter((c) => c.score >= opts.min)
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.limit);
   const keep = new Set(candidates.map((c) => c.symbol));
-  const result = { ...scan, candidates, pairs: scan.pairs.filter((p) => keep.has(p.short)) };
+  const result = { ...scan, candidates, pairs: scan.pairs.filter((p) => keep.has(p.short)).map((p) => withVolRatio(p, enriched)) };
 
   let hedge = null;
   if (opts.account) {

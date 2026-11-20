@@ -325,6 +325,7 @@ async function handleShort(q, res) {
     meta: {
       mode: 'short',
       regime: snap.meta?.market?.regime ?? null,
+      sectors: opts.sectors,
       updatedAt: { fundamentals: snap.meta?.updatedAt ?? null, technical: snap.meta?.technicalUpdatedAt ?? null, universe: uni?.meta?.updatedAt ?? null },
       filters: { minScore: opts.minScore, perSector: opts.perSector, limit: opts.limit },
       thresholds: THRESHOLDS,
