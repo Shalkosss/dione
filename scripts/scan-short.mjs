@@ -125,7 +125,8 @@ function printScan(scan, opts) {
       where.padEnd(33), String(t.stop ?? '—').padStart(7), String(t.target ?? '—').padStart(10), String(t.rr ?? '—').padStart(5), ' ', why,
     ].join(' '));
   }
-  out('\nAcción: SHORT AHORA = el precio ya está en la resistencia · ORDEN LÍMITE = vender en corto recién si sube a la entrada ·');
+  out('\nAcción: SHORT AHORA = el precio ya está en la resistencia · SHORT A MERCADO = entrar hoy con el stop sobre la resistencia');
+  out('(solo si hay un soporte debajo que pague 3R) · ORDEN LÍMITE = vender en corto recién si sube a la entrada ·');
   out('NO = acumulación Wyckoff (riesgo de barrido y rebote), soporte demasiado cerca o sin resistencia clara.');
   out('\nPares neutrales (corto / largo del mismo sector, montos por volatilidad):');
   const actionable = new Set(scan.candidates.filter((c) => /SHORT|ORDEN/.test(c.verdict)).map((c) => c.symbol));

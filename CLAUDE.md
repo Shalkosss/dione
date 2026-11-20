@@ -260,7 +260,7 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
    descriptivos. Stop y take profit viven en la compra (`stop`, `target`); si faltan,
    el seguimiento usa los de la tesis viva del ticker.
 
-12. **Cortos en resistencia** (21-nov-2026): el scan short nunca entra al precio actual. `lib/shortTiming.js` pone la entrada en la resistencia más cercana encima (nivel, directriz o SMA50), bloquea si hay acumulación Wyckoff activa (Spring con mínimo intacto o clímax de venta) y exige 3R hasta el primer soporte, que es donde se cubre. Lo pidió el usuario tras ver que el scan proponía shortear FLY pegado a su soporte.
+12. **Cortos en resistencia** (21-nov-2026): `lib/shortTiming.js` toma como referencia la resistencia más cercana encima (nivel, directriz o SMA50). Se entra a mercado solo si, con el stop medio ATR sobre esa resistencia, el primer soporte debajo paga 3R; si no hay soporte debajo (mínimos de varios meses) o no paga, orden límite en la resistencia. Bloquea si hay acumulación Wyckoff activa (Spring con mínimo intacto o clímax de venta). El deep short es el skill `short` (`.claude/skills/short/`). Lo pidió el usuario tras ver que el scan proponía shortear FLY pegado a su soporte.
 
 ---
 
