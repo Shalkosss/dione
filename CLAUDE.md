@@ -51,7 +51,7 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
 | `migrations/` | SQL para pegar en el editor de Supabase, numerado |
 | `tests/` | Tests de vitest |
-| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-backfill-check`) |
+| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-import`, `thesis-backfill-check`) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
 | `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`, `megacap_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
 
@@ -164,6 +164,10 @@ Spec: `project-docs/THESIS_LOG.md`. Piezas:
   tesis con fecha pasada.
 - `lib/thesisStats.js`: métricas de la sección 6 del spec.
 - `lib/thesisRefresh.js`: baja velas y orquesta. `lib/thesisStore.js`: Supabase.
+- `scripts/thesis-import.mjs` (`npm run thesis:import -- archivo.md`): encuentra
+  los bloques en un informe, los valida en local (`lib/thesisImport.js`) y los
+  sube a `POST /api/theses` con el `THESES_TOKEN` de `.env.local`. `--check`
+  solo valida; si un bloque falla no se sube ninguno.
 - `scripts/thesis-backfill-check.mjs`: prueba de aceptación contra los 12
   planes de `DEEPS_BACKFILL_2026-11.md` con precios reales.
 
