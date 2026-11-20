@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "docs:check": "node scripts/docs-check.mjs",
-    "thesis:import": "node scripts/thesis-import.mjs"
+    "thesis:import": "node scripts/thesis-import.mjs",
+    "ledger:order": "node scripts/ledger-order.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",

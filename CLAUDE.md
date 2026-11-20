@@ -51,7 +51,8 @@ discutirlo antes. El proyecto es deliberadamente minimalista.
 | `lib/` | Lógica del servidor, pura cuando se puede: scoring, EDGAR, Yahoo, tracker de tesis |
 | `migrations/` | SQL para pegar en el editor de Supabase, numerado |
 | `tests/` | Tests de vitest |
-| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-import`, `thesis-backfill-check`) |
+| `scripts/` | Utilidades de línea de comando (`docs-check`, `thesis-import`, `ledger-order`, `thesis-backfill-check`) |
+| `.claude/skills/` | Skills del proyecto: `deep` (corre `/deep` con datos en vivo y sube la tesis) y `orden` (registra una compra o venta que el usuario reporta) |
 | `project-docs/` | Documentos del método DIONE v4.1 |
 | `research/` | Laboratorio en Python, fuera de la web (`backtest_2026_11/`, `pead_2026_11/`, `quality_2026_11/`, `smallmid_2026_11/`, `megacap_2026_11/`). Entorno propio en `research/.venv` (no se commitea) |
 
@@ -81,6 +82,9 @@ Supabase (Fase 2.1, `src/store/useLedgerSync.js`): cada cambio se sube con la
 versión que vio el navegador; si otro navegador escribió antes, la pantalla
 ofrece "usar Supabase" o "subir este navegador". Nunca mezcla libros solo.
 La lógica del libro vive en `lib/ledger.js` (servidor y navegador usan la misma).
+Desde Claude Code, `npm run ledger:order -- buy JMKE 10 --price 100 --account real`
+(`scripts/ledger-order.mjs`, `lib/ledgerOrder.js`) baja el libro, valida la orden con
+las mismas reglas y lo sube con su versión; el navegador lo adopta al sincronizar.
 
 ## ENDPOINTS
 
@@ -168,6 +172,7 @@ Spec: `project-docs/THESIS_LOG.md`. Piezas:
   los bloques en un informe, los valida en local (`lib/thesisImport.js`) y los
   sube a `POST /api/theses` con el `THESES_TOKEN` de `.env.local`. `--check`
   solo valida; si un bloque falla no se sube ninguno.
+- `research/theses/`: bloques de los `/deep` corridos en Claude Code, uno por archivo.
 - `scripts/thesis-backfill-check.mjs`: prueba de aceptación contra los 12
   planes de `DEEPS_BACKFILL_2026-11.md` con precios reales.
 
