@@ -8,8 +8,8 @@ const bar = (i, close, { range = 1, volume = 1e6 } = {}) => ({
   date: day(i), open: close, high: close + range / 2, low: close - range / 2, close, volume,
 });
 
-// Bajada sin Spring: nuevo mínimo en 87.5, piso plano, rebote a 111, vuelta a 94
-// y segundo techo en 110.5. Hoy 100.
+// Bajada sin Spring: mínimo en 87.5, piso plano, rebote a 111, segundo piso en
+// 88.5 (soporte de 2 toques) y segundo techo en 110.5. Hoy 100.
 function downtrendWithResistance() {
   const out = [];
   let i = 0;
@@ -17,7 +17,7 @@ function downtrendWithResistance() {
   // Cada vela cierra bajo el mínimo anterior hasta 87.5; después seis sesiones
   // en 88 (sin cerrar sobre 88.5, así no hay Spring) y recién ahí el rebote.
   const path = [113, 110, 107, 104, 101, 98, 95, 92, 90.5, 89, 87.5, 88, 88, 88, 88, 88, 88,
-    92, 97, 102, 107, 111, 107, 103, 99, 95, 94, 98, 102, 106, 110.5, 106, 102, 99, 100];
+    92, 97, 102, 107, 111, 107, 103, 99, 95, 91.5, 88.5, 92, 96, 100, 104, 108, 110.5, 106, 102, 99, 100];
   for (const c of path) out.push(bar(i++, c));
   return out;
 }
@@ -45,19 +45,28 @@ describe('shortTiming', () => {
     expect(shortTiming([bar(0, 10)]).status).toBe('SIN_DATOS');
   });
 
-  it('no entra al precio: la entrada es la resistencia de arriba y el objetivo el soporte', () => {
+  it('arma plan a mercado y límite con stop sobre la resistencia y objetivo en el soporte', () => {
     const t = shortTiming(downtrendWithResistance());
     expect(t.price).toBeCloseTo(100);
-    expect(t.entry).toBeGreaterThan(t.price);
+    expect(t.limit.entry).toBeGreaterThan(t.price);
     expect(t.stop).toBeGreaterThan(t.entry);
     expect(t.target).toBeLessThan(t.price);
-    expect(['ORDEN_LIMITE', 'EN_RESISTENCIA', 'POCO_RECORRIDO']).toContain(t.status);
+    expect(['ORDEN_LIMITE', 'EN_RESISTENCIA', 'A_MERCADO', 'POCO_RECORRIDO']).toContain(t.status);
+    expect(t.market.entry).toBeCloseTo(100);
+    expect(t.market.stop).toBeGreaterThan(t.limit.entry);
   });
 
   it('bloquea el corto si hay acumulación Wyckoff (clímax de venta y rally)', () => {
     const t = shortTiming(sellingClimax());
     expect(t.status).toBe('ACUMULACION');
     expect(t.reasons[0]).toMatch(/clímax|Spring/);
+  });
+
+  it('a mercado si el soporte paga el R:R con el stop sobre la resistencia', () => {
+    const t = shortTiming(downtrendWithResistance(), { minRR: 2 });
+    expect(t.status).toBe('A_MERCADO');
+    expect(t.entry).toBeCloseTo(100);
+    expect(t.target).toBeCloseTo(87.5);
   });
 
   it('exige R:R mínimo hasta el primer soporte', () => {
@@ -70,6 +79,7 @@ describe('finalShortVerdict', () => {
   it('traduce score y timing a una acción concreta', () => {
     expect(finalShortVerdict(70, { status: 'ORDEN_LIMITE' })).toBe('ORDEN LÍMITE');
     expect(finalShortVerdict(70, { status: 'EN_RESISTENCIA' })).toBe('SHORT AHORA');
+    expect(finalShortVerdict(70, { status: 'A_MERCADO' })).toBe('SHORT A MERCADO');
     expect(finalShortVerdict(70, { status: 'ACUMULACION' })).toBe('NO: ACUMULACIÓN');
     expect(finalShortVerdict(70, { status: 'POCO_RECORRIDO' })).toBe('NO: SOPORTE CERCA');
     expect(finalShortVerdict(70, { status: 'SIN_RESISTENCIA' })).toBe('NO: SIN RESISTENCIA');

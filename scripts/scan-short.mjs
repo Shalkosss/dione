@@ -128,7 +128,7 @@ function printScan(scan, opts) {
   out('\nAcción: SHORT AHORA = el precio ya está en la resistencia · ORDEN LÍMITE = vender en corto recién si sube a la entrada ·');
   out('NO = acumulación Wyckoff (riesgo de barrido y rebote), soporte demasiado cerca o sin resistencia clara.');
   out('\nPares neutrales (corto / largo del mismo sector, montos por volatilidad):');
-  const actionable = new Set(scan.candidates.filter((c) => /SHORT AHORA|ORDEN/.test(c.verdict)).map((c) => c.symbol));
+  const actionable = new Set(scan.candidates.filter((c) => /SHORT|ORDEN/.test(c.verdict)).map((c) => c.symbol));
   for (const p of scan.pairs.filter((x) => actionable.has(x.short))) {
     out(`  ${p.short.padEnd(6)} contra ${(p.long || p.hedgeEtf || '—').padEnd(6)} · por cada $1 en corto, $${p.longPerShort} en largo${p.long ? '' : ' (sin largo de calidad: cubrir con el ETF)'}`);
   }

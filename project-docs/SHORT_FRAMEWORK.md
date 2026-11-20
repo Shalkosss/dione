@@ -59,16 +59,18 @@ Fundamental y tendencia se reescalan sobre los ítems con dato (bandera
 entradas de la tendencia. Es la tríada del AQR para el lado corto: cara, con
 momentum negativo y de baja calidad.
 
-Filtros duros: cap ≥ $2B, volumen diario ≥ $50M, precio ≥ $10. Se excluyen fondos y trusts, salud sin ganancias (riesgo binario) y filas con menos de 10 de 35 puntos fundamentales con dato. En financieras, REITs y utilities no cuentan deuda, FCF ni el gate (su balance es así por diseño). El script baja velas de Yahoo para cada candidato (ATR, RSI, medias, fuerza relativa contra su ETF) y vuelve a puntuar. Anti-traps
+Filtros duros: cap ≥ $2B (o, sin dato de cap, volumen diario ≥ $200M: bandera `SIN_CAP`), volumen diario ≥ $50M, precio ≥ $10. Se excluyen fondos y trusts, salud sin ganancias (riesgo binario) y filas con menos de 10 de 35 puntos fundamentales con dato. En financieras, REITs y utilities no cuentan deuda, FCF ni el gate (su balance es así por diseño). El script baja velas de Yahoo para cada candidato (ATR, RSI, medias, fuerza relativa contra su ETF) y vuelve a puntuar. Anti-traps
 automáticos: compounder de calidad (gate, Piotroski ≥7, preScore ≥70) no se
 shortea; deterioro fundamental <15 se descarta; RSI <30 o más de 15% bajo la
 SMA50 = `EXTENDIDA`, veredicto ESPERAR REBOTE con entrada en la SMA50.
 **Dónde entrar** (`lib/shortTiming.js`, 21-nov-2026): el score dice qué está
-débil, no cuándo shortearlo. Nunca se entra al precio actual:
+débil, no cuándo shortearlo. Nunca pegado a un soporte:
 
 1. Entrada = resistencia más cercana encima (nivel con 2+ toques, directriz
    bajista o SMA50, lo que esté más cerca). Si el precio ya está ahí: SHORT
-   AHORA; si no: ORDEN LÍMITE en ese nivel (vender el rebote que falla, LPSY).
+   AHORA. Si no, SHORT A MERCADO cuando con el stop medio ATR sobre esa
+   resistencia el soporte de abajo paga 3R; si no paga, ORDEN LÍMITE en el
+   nivel (vender el rebote que falla, LPSY).
 2. No se shortea con acumulación Wyckoff activa: Spring con su mínimo intacto
    o clímax de venta reciente sin romper. Es la zona donde se barren stops y
    el precio se dispara. Un Spring con el mínimo roto es debilidad (SOW) y un

@@ -248,3 +248,12 @@ describe('largo del par', () => {
     expect(r.pairs[0].hedgeEtf).toBe('XLK');
   });
 });
+
+describe('sin capitalización', () => {
+  it('pasa si mueve más de $200M diarios, con bandera SIN_CAP', () => {
+    const s = scoreShort(normalizeShortRow({ ...WEAK, marketCap: 0, dollarVolume: 900e6 }), { sectors: SECTORS });
+    expect(s.excluded).toBeNull();
+    expect(s.flags).toContain('SIN_CAP');
+    expect(scoreShort(normalizeShortRow({ ...WEAK, marketCap: 0, dollarVolume: 100e6 }), { sectors: SECTORS }).excluded).toMatch(/cap/);
+  });
+});
