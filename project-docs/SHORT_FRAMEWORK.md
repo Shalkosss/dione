@@ -51,8 +51,13 @@ objetivo cuando existan las fuentes que faltan):
 | Deterioro fundamental | 35 | Piotroski ≤3 (8) o 4 (4) · Altman Z <1,81 (7) o <3 (3) · FCF ≤0 (6) · margen neto u operativo negativo (5) · D/E >2 (5) o >1 (2) · no pasa el gate (4) |
 | Tendencia rota | 30 | trendScore ≤20 (10), ≤35 (6), ≤50 (2) · bajo SMA200 (6) · SMA50 bajo SMA200 (4) · momentum 12-1 negativo (5) · fuerza relativa 63d negativa contra su ETF (5) |
 | Sector débil | 15 | ETF del sector bajo su SMA200 (8) · RS 3m negativa (7) |
-| Smart money | 15 | Insiders netos vendedores >$1M sin compras (8) o netos vendedores (4) · analistas bajando (4). Lo suma el script con `/api/smart-money` (top 100) |
-| Valuación | 5 | P/E >40 (5), >25 (2), pérdidas sin P/E (3) |
+| Valuación | 10 | P/E >40 (10), >25 (5), pérdidas sin P/E (6) |
+| Smart money | 10 | Insiders netos vendedores >$1M sin compras (6) o netos vendedores (3) · analistas bajando (4). Lo suma el script con `/api/smart-money` (top 100) |
+
+Fundamental y tendencia se reescalan sobre los ítems con dato (bandera
+`DATOS_PARCIALES`): las filas del universo no tienen Piotroski, Altman ni las
+entradas de la tendencia. Es la tríada del AQR para el lado corto: cara, con
+momentum negativo y de baja calidad.
 
 Filtros duros: cap ≥ $2B, volumen diario ≥ $50M, precio ≥ $10. Anti-traps
 automáticos: compounder de calidad (gate, Piotroski ≥7, preScore ≥70) no se

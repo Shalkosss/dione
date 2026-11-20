@@ -82,8 +82,8 @@ describe('scoreShort', () => {
       sectors: SECTORS,
       smartMoney: { WEAK: { insider: { buyUSD: 0, sellUSD: 4e6, netUSD: -4e6 }, analyst: { upgradesMinusDowngrades: -2 } } },
     });
-    expect(withSm.breakdown.smartMoney).toBe(12);
-    expect(withSm.score).toBe(Math.min(100, base.score + 12));
+    expect(withSm.breakdown.smartMoney).toBe(10);
+    expect(withSm.score).toBe(Math.min(100, base.score + 10));
   });
 
   it('no muta la fila', () => {
@@ -156,8 +156,8 @@ describe('applySmartMoney', () => {
     const c = buildShortScan([normalizeShortRow(WEAK)], { sectors: SECTORS }).candidates[0];
     const copy = structuredClone(c);
     const out = applySmartMoney(c, { insider: { buyUSD: 0, netUSD: -2e6 } });
-    expect(out.breakdown.smartMoney).toBe(8);
-    expect(out.score).toBe(c.score + 8);
+    expect(out.breakdown.smartMoney).toBe(6);
+    expect(out.score).toBe(Math.min(100, c.score + 6));
     expect(out.flags).not.toContain('SIN_SMART_MONEY');
     expect(c).toEqual(copy);
     expect(applySmartMoney(c, null)).toBe(c);
@@ -192,5 +192,20 @@ describe('hedgeNeeded', () => {
 
   it('sin exceso no pide corto', () => {
     expect(hedgeNeeded([{ value: 100, beta: 0.3 }], { totalValue: 1000 }).shortBetaDollars).toBe(0);
+  });
+});
+
+describe('datos parciales', () => {
+  it('una fila del universo se mide sobre los ítems que tiene', () => {
+    const uni = normalizeShortRow({
+      symbol: 'UNI', gicsSector: 'Information Technology', marketCap: 20e9, price: 50, dollarVolume: 300e6,
+      gatePass: false, fcfYield: -0.01, opMargin: 0.05, debtToEquity: 2.5, pe: 60, trendScore: 15, aboveSma200: false,
+    });
+    const s = scoreShort(uni, { sectors: SECTORS });
+    // fundamental: (6 + 5 + 4) de 20 disponibles → 26 de 35; tendencia: 16 de 16 → 30.
+    expect(s.breakdown.fundamental).toBe(26);
+    expect(s.breakdown.technical).toBe(30);
+    expect(s.breakdown.valuation).toBe(10);
+    expect(s.flags).toContain('DATOS_PARCIALES');
   });
 });
