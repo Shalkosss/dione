@@ -45,7 +45,7 @@ Objetivo: que cada `/deep` quede registrado y que su estado se actualice solo to
 - Tabla con estado, días, distancia a entrada, stop y objetivo, banderas.
 - Gráfico por tesis: precio con líneas de entrada, stop, TP1 y objetivo, marcas de emisión, ejecución y cierre, y la curva de SPY y del ETF sectorial rebasadas a 100 en la fecha de emisión.
 - Panel de eficiencia: tasa de ejecución de LIMIT, retorno perdido en expiradas, alfa por rating, convicción, sector y etiqueta de tendencia.
-- Botón de importar JSON y botón de exportar el log a markdown para el proyecto.
+- Importar y exportar: se retiraron de la web el 20-nov-2026. Las tesis entran desde Claude Code (skill `deep`, `npm run thesis:import`).
 
 Criterio de aceptación: importar 5 tesis de prueba con fechas pasadas y que el cron reconstruya sus estados correctamente contra un cálculo manual. Los 12 planes de la sección 4 de `DEEPS_BACKFILL_2026-11.md` sirven de casos de prueba con resultado conocido.
 

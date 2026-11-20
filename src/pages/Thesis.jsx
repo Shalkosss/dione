@@ -5,10 +5,9 @@ import { KpiCard, KpiGrid, Segmented, EmptyState } from "../components/ui.jsx";
 import ThesisTable from "../components/thesis/ThesisTable.jsx";
 import ThesisDetail from "../components/thesis/ThesisDetail.jsx";
 import EfficiencyPanel from "../components/thesis/EfficiencyPanel.jsx";
-import ImportPanel from "../components/thesis/ImportPanel.jsx";
 import PoolDiversity from "../components/thesis/PoolDiversity.jsx";
 import { fetchTheses, fetchThesisStats } from "../lib/thesisApi.js";
-import { toRow, exportMarkdown, LIVE_STATUSES } from "../lib/thesisView.js";
+import { toRow, LIVE_STATUSES } from "../lib/thesisView.js";
 
 const FILTERS = [
   { key: "vivas", label: "Vivas", test: (r) => LIVE_STATUSES.includes(r.status) },
@@ -17,17 +16,9 @@ const FILTERS = [
   { key: "todas", label: "Todas", test: () => true },
 ];
 
-function downloadText(filename, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // Thesis Log: tracker de tesis. El estado lo mantiene el cron refresh-theses;
-// esta página solo lee /api/theses, importa bloques JSON y exporta el log.
+// esta página solo lee /api/theses. Las tesis entran desde Claude Code
+// (skill deep, `npm run thesis:import`).
 export default function Thesis() {
   const [theses, setTheses] = useState([]);
   const [stats, setStats] = useState(null);
@@ -35,7 +26,6 @@ export default function Thesis() {
   const [error, setError] = useState(null);
   const [chosenFilter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [version, setVersion] = useState(0); // fuerza recarga del detalle
 
   const load = useCallback(async () => {
@@ -63,11 +53,6 @@ export default function Thesis() {
   const filter = chosenFilter ?? (counts.vivas > 0 || !rows.length ? "vivas" : "todas");
   const visible = rows.filter(FILTERS.find((f) => f.key === filter).test);
 
-  const handleExport = () => {
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadText(`THESIS_LOG_entradas_${stamp}.md`, exportMarkdown(theses));
-  };
-
   return (
     <div>
       <KpiGrid>
@@ -87,16 +72,6 @@ export default function Thesis() {
         <span style={{ flex: 1 }} />
         {loading && <span style={{ fontSize: 11, color: C.muted }}>Cargando…</span>}
         <button className="dione-hover" onClick={load} disabled={loading} style={btn}>Actualizar</button>
-        <button className="dione-hover" onClick={handleExport} disabled={!theses.length} style={{ ...btn, opacity: theses.length ? 1 : 0.4 }}>
-          Exportar markdown
-        </button>
-        <button
-          className="dione-hover"
-          onClick={() => setImportOpen((v) => !v)}
-          style={{ ...btn, color: importOpen ? C.bg : C.accent, background: importOpen ? C.accent : "transparent", borderColor: C.accent }}
-        >
-          {importOpen ? "Cerrar importador" : "Importar JSON"}
-        </button>
       </div>
 
       {error && (
@@ -104,8 +79,6 @@ export default function Thesis() {
           No se pudo leer el log de tesis: {error}
         </div>
       )}
-
-      {importOpen && <ImportPanel onImported={load} />}
 
       {stats?.diversity?.live > 0 && <div style={{ marginBottom: 16 }}><PoolDiversity diversity={stats.diversity} /></div>}
 
@@ -118,7 +91,7 @@ export default function Thesis() {
             <EmptyState title={loading ? "Cargando…" : rows.length ? "Ninguna tesis en este filtro" : "Todavía no hay tesis"}>
               {!loading && (rows.length
                 ? "Probá con otra pestaña: las tesis que ya cerraron están en Cerradas y en Todas."
-                : "Importá el bloque JSON que emite DIONE al terminar un /deep.")}
+                : "Corré /deep TICKER en Claude Code: la tesis se registra sola.")}
             </EmptyState>
           )}
       </Panel>

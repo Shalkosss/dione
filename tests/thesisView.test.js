@@ -2,7 +2,7 @@
 // y piezas puras del refresco (velas de Yahoo, régimen, plan de descarga).
 
 import { describe, it, expect } from 'vitest';
-import { toRow, buildChartSeries, chartDomains, exportMarkdown } from '../src/lib/thesisView.js';
+import { toRow, buildChartSeries, chartDomains } from '../src/lib/thesisView.js';
 import { toDailyCandles, buildRegimeByDate, planRefresh, replayAll } from '../lib/thesisRefresh.js';
 
 const THESIS = {
@@ -47,16 +47,6 @@ describe('gráfico', () => {
     expect(price[0]).toBeLessThan(90);
     expect(price[1]).toBeGreaterThan(130);
     expect(index[0]).toBeCloseTo((price[0] / 110) * 100, 6);
-  });
-});
-
-describe('exportMarkdown', () => {
-  it('arma la tabla y el detalle, escapando las barras', () => {
-    const md = exportMarkdown([THESIS], new Date('2026-06-11T00:00:00Z'));
-    expect(md).toContain('## ENTRADAS');
-    expect(md).toContain('| MU-2026-06-01 | BUY | 4 | Límite 100.00, stop 90.00, objetivo 130.00 | ARMADA |');
-    expect(md).toContain('- Tesis: DRAM | ciclo');
-    expect(md).toContain('LIMIT_LEJOS desde 2026-06-04');
   });
 });
 

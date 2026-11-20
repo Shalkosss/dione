@@ -68,7 +68,7 @@ Watchlist y el Screener de navegador se retiraron: no figuran en ninguna fase.
 | `/market` | `Market.jsx` | Régimen (SPY contra SMA200, VIX, amplitud) y tablero de los 11 sectores |
 | `/scan` | `HiddenGems.jsx` | Lee el snapshot de `/api/screener`. Solo funciona en Vercel |
 | `/earnings` | `Earnings.jsx` | Fechas de resultados (EDGAR) y reacción del precio |
-| `/thesis` | `Thesis.jsx` | Tracker de tesis (ver abajo) |
+| `/thesis` | `Thesis.jsx` | Tracker de tesis (ver abajo). Solo lectura: las tesis entran desde Claude Code |
 | `/chart` | `Chart.jsx` | Línea o velas, SMA 50/200, volumen relativo (RVOL 20 o 10), eventos y fase Wyckoff, soportes y resistencias, directrices y perfil de volumen automáticos. Si el ticker está en cartera dibuja la compra, el tramo tenido en punteado, el stop y el take profit. Acepta `?t=TICKER` |
 
 Navegación: Alt+1…7 cambia de módulo; Ctrl+K enfoca la línea de comandos, que
