@@ -253,3 +253,10 @@ describe('trendInputsFromCandles', () => {
     expect(row.trendInputs.atr14).toBe(1.6);
   });
 });
+
+describe('salud sin datos de margen', () => {
+  it('sin P/E y con FCF negativo también es binario', () => {
+    const bio = normalizeShortRow({ symbol: 'BIO', gicsSector: 'Health Care', marketCap: 5e9, price: 30, dollarVolume: 80e6, gatePass: false, fcfYield: -0.05, debtToEquity: 0.1, trendScore: 10, aboveSma200: false });
+    expect(scoreShort(bio, { sectors: SECTORS }).excluded).toMatch(/binario/);
+  });
+});
