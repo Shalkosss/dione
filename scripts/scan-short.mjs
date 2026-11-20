@@ -15,7 +15,8 @@
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseEnvFile } from '../lib/thesisImport.js';
-import { betaFromCloses, hedgeNeeded, scoreShort, shortPlan, trendInputsFromCandles, withCandleInputs } from '../lib/shortScan.js';
+import { betaFromCloses, hedgeNeeded, scoreShort, trendInputsFromCandles, withCandleInputs } from '../lib/shortScan.js';
+import { shortTiming, toChartCandles, finalShortVerdict } from '../lib/shortTiming.js';
 import { accountState } from '../lib/ledger.js';
 import { fetchCandlesBatch } from '../lib/yahoo.js';
 import { toDailyCandles } from '../lib/thesisRefresh.js';
@@ -98,7 +99,8 @@ async function enrich(scan, sm) {
     const row = withCandleInputs(c.row, trendInputsFromCandles(candles(c.symbol), c.sectorEtf ? candles(c.sectorEtf) : []));
     const s = scoreShort(row, { sectors, smartMoney: sm });
     if (s.excluded) return { ...c, score: 0 };
-    return { ...c, row, score: s.score, verdict: s.verdict, breakdown: s.breakdown, flags: s.flags, plan: shortPlan(row, s.flags) };
+    const timing = shortTiming(toChartCandles(raw.get(c.symbol)));
+    return { ...c, row, score: s.score, breakdown: s.breakdown, flags: s.flags, timing, verdict: finalShortVerdict(s.score, timing) };
   });
 }
 
@@ -113,18 +115,21 @@ function printScan(scan, opts) {
   out(`Régimen: ${r?.label ?? '—'} · VIX ${r?.vix?.toFixed?.(1) ?? '—'} · SPY ${pct(r?.spyDist, 1)} de la SMA200 · amplitud ${pct(r?.breadth)}`);
   out(`Escaneadas ${scan.scanned} · excluidas ${JSON.stringify(scan.excluded)} · mínimo ${opts.min}`);
   out(`Faltan (verificar en el broker): ${(scan.meta?.missing || []).join(', ')}\n`);
-  out('Ticker  Score Veredicto       Sector  F  T  S SM  V  Tend  RSI  Entrada   Stop  Objetivo  Banderas');
+  out('Ticker  Score  Acción               Precio  Entrada (dónde)                    Stop  Cubrir en  R:R  Motivo');
   for (const c of scan.candidates) {
-    const b = c.breakdown;
+    const t = c.timing || {};
+    const where = t.entry != null ? `${t.entry} (${t.entrySource})` : '—';
+    const why = [...(t.reasons || []), t.wyckoff?.label && t.status !== 'ACUMULACION' ? `Wyckoff: ${t.wyckoff.label}` : null].filter(Boolean).join('; ');
     out([
-      c.symbol.padEnd(7), String(c.score).padStart(5), ' ', c.verdict.padEnd(15), (c.sectorEtf || '—').padEnd(6),
-      String(b.fundamental).padStart(2), String(b.technical).padStart(2), String(b.sector).padStart(2),
-      String(b.smartMoney).padStart(2), String(b.valuation).padStart(2), String(c.trendScore ?? '—').padStart(5), String(c.row?.trendInputs?.rsi14 != null ? Math.round(c.row.trendInputs.rsi14) : '—').padStart(4),
-      String(c.plan.entry).padStart(9), String(c.plan.stop).padStart(7), String(c.plan.target).padStart(9), ' ', c.flags.filter((f) => f !== 'SIN_SMART_MONEY').join(','),
+      c.symbol.padEnd(7), String(c.score).padStart(5), ' ', c.verdict.padEnd(19), String(t.price ?? c.price ?? '—').padStart(7), ' ',
+      where.padEnd(33), String(t.stop ?? '—').padStart(7), String(t.target ?? '—').padStart(10), String(t.rr ?? '—').padStart(5), ' ', why,
     ].join(' '));
   }
+  out('\nAcción: SHORT AHORA = el precio ya está en la resistencia · ORDEN LÍMITE = vender en corto recién si sube a la entrada ·');
+  out('NO = acumulación Wyckoff (riesgo de barrido y rebote), soporte demasiado cerca o sin resistencia clara.');
   out('\nPares neutrales (corto / largo del mismo sector, montos por volatilidad):');
-  for (const p of scan.pairs) {
+  const actionable = new Set(scan.candidates.filter((c) => /SHORT AHORA|ORDEN/.test(c.verdict)).map((c) => c.symbol));
+  for (const p of scan.pairs.filter((x) => actionable.has(x.short))) {
     out(`  ${p.short.padEnd(6)} contra ${(p.long || p.hedgeEtf || '—').padEnd(6)} · por cada $1 en corto, $${p.longPerShort} en largo${p.long ? '' : ' (sin largo de calidad: cubrir con el ETF)'}`);
   }
 }

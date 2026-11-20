@@ -38,7 +38,7 @@ describe('GET /api/screener?mode=short', () => {
     const res = await call({ mode: 'short' });
     expect(res.statusCode).toBe(200);
     expect(res.body.candidates.map((c) => c.symbol)).toEqual(['WEAK']);
-    expect(res.body.candidates[0].plan.stop).toBeCloseTo(43.2);
+    expect(res.body.candidates[0].verdict).toMatch(/CANDIDATO/);
     expect(res.body.excluded.cap).toBe(1);
     expect(res.body.meta.regime.label).toBe('DEFENSIVO');
     expect(res.body.meta.missing).toContain('short interest');

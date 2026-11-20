@@ -1,7 +1,7 @@
 // tests/shortScan.test.js — scan short (SHORT_FRAMEWORK.md, versión con datos del snapshot).
 
 import { describe, it, expect } from 'vitest';
-import { normalizeShortRow, scoreShort, shortPlan, buildShortScan, mergeUniverse } from '../lib/shortScan.js';
+import { normalizeShortRow, scoreShort, buildShortScan, mergeUniverse } from '../lib/shortScan.js';
 
 const SECTORS = [
   { etf: 'XLK', gicsSector: 'Information Technology', aboveSma200: false, rs3m: -0.06 },
@@ -50,7 +50,7 @@ describe('scoreShort', () => {
     expect(s.breakdown.fundamental).toBeGreaterThanOrEqual(25);
     expect(s.breakdown.sector).toBe(15);
     expect(s.score).toBeGreaterThanOrEqual(65);
-    expect(['SHORT', 'DIAMANTE']).toContain(s.verdict);
+    expect(['CANDIDATO', 'CANDIDATO FUERTE']).toContain(s.verdict);
   });
 
   it('excluye al compounder de calidad aunque la tendencia esté rota', () => {
@@ -69,11 +69,10 @@ describe('scoreShort', () => {
     expect(scoreShort(normalizeShortRow(healthy), { sectors: SECTORS }).excluded).toMatch(/deterioro/);
   });
 
-  it('marca EXTENDIDA si ya cayó demasiado (fase E): esperar rebote', () => {
+  it('marca EXTENDIDA si ya cayó demasiado (fase E)', () => {
     const extended = { ...WEAK, trendInputs: { ...WEAK.trendInputs, rsi14: 24, distSma50: -0.18 } };
     const s = scoreShort(normalizeShortRow(extended), { sectors: SECTORS });
     expect(s.flags).toContain('EXTENDIDA');
-    expect(s.verdict).toBe('ESPERAR REBOTE');
   });
 
   it('suma insiders vendedores y analistas bajando', () => {
@@ -91,26 +90,6 @@ describe('scoreShort', () => {
     const copy = structuredClone(row);
     scoreShort(row, { sectors: SECTORS });
     expect(row).toEqual(copy);
-  });
-});
-
-describe('shortPlan', () => {
-  it('entra al precio, stop a 2 ATR y objetivo a 3R', () => {
-    const p = shortPlan(normalizeShortRow(WEAK), []);
-    expect(p.entry).toBe(40);
-    expect(p.stop).toBeCloseTo(43.2);
-    expect(p.target).toBeCloseTo(30.4);
-  });
-
-  it('extendida: entrada en el rebote a la SMA50', () => {
-    const row = normalizeShortRow({ ...WEAK, trendInputs: { ...WEAK.trendInputs, distSma50: -0.2 } });
-    const p = shortPlan(row, ['EXTENDIDA']);
-    expect(p.entry).toBeCloseTo(50); // 40 / 0.8
-  });
-
-  it('sin ATR usa 8% de stop', () => {
-    const p = shortPlan(normalizeShortRow({ ...WEAK, trendInputs: {} }), []);
-    expect(p.stop).toBeCloseTo(43.2);
   });
 });
 

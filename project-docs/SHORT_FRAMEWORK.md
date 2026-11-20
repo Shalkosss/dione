@@ -63,7 +63,19 @@ Filtros duros: cap ≥ $2B, volumen diario ≥ $50M, precio ≥ $10. Se excluyen
 automáticos: compounder de calidad (gate, Piotroski ≥7, preScore ≥70) no se
 shortea; deterioro fundamental <15 se descarta; RSI <30 o más de 15% bajo la
 SMA50 = `EXTENDIDA`, veredicto ESPERAR REBOTE con entrada en la SMA50.
-Plan: stop a 2 ATR (8% sin ATR), objetivo a 3R.
+**Dónde entrar** (`lib/shortTiming.js`, 21-nov-2026): el score dice qué está
+débil, no cuándo shortearlo. Nunca se entra al precio actual:
+
+1. Entrada = resistencia más cercana encima (nivel con 2+ toques, directriz
+   bajista o SMA50, lo que esté más cerca). Si el precio ya está ahí: SHORT
+   AHORA; si no: ORDEN LÍMITE en ese nivel (vender el rebote que falla, LPSY).
+2. No se shortea con acumulación Wyckoff activa: Spring con su mínimo intacto
+   o clímax de venta reciente sin romper. Es la zona donde se barren stops y
+   el precio se dispara. Un Spring con el mínimo roto es debilidad (SOW) y un
+   SOS que perdió su nivel es bajista: esos no bloquean.
+3. Stop = entrada + 1,5 ATR (sobre la zona). Se cubre en el primer soporte
+   debajo; si hasta ahí no hay 3R, no hay trade (NO: SOPORTE CERCA). Sin
+   resistencia a menos de 25%: NO.
 
 Pares market neutral (idea del AQR Apex, selección dentro de la industria):
 cada corto se empareja con el mejor largo de calidad y tendencia del mismo
