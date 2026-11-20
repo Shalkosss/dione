@@ -69,6 +69,12 @@ describe('shortTiming', () => {
     expect(t.target).toBeCloseTo(87.5);
   });
 
+  it('sin soporte debajo no entra a mercado: solo límite', () => {
+    const candles = downtrendWithResistance().slice(0, 139);
+    const t = shortTiming(candles, { minRR: 2 });
+    if (t.firstSupport == null) expect(t.status).not.toBe('A_MERCADO');
+  });
+
   it('exige R:R mínimo hasta el primer soporte', () => {
     const t = shortTiming(downtrendWithResistance(), { minRR: 50 });
     expect(t.status).toBe('POCO_RECORRIDO');
