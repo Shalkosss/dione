@@ -281,10 +281,8 @@ Reglas del tracker que no salen del spec y conviene no cambiar sin discutir:
 
 ## PENDIENTES CONOCIDOS
 
-- **Configurar `THESES_TOKEN` en Vercel producción** (20-nov-2026 `/api/theses/ledger` respondía 503 "no configurado"): sin eso no sincroniza el libro ni funcionan `ledger:order`, `thesis:import` ni `scan:short --account`.
 - Scan short v1: sin short interest, días para cubrir, costo de préstamo ni Beneish (verificar en el broker). Casi todos los candidatos salen del universo con datos parciales; los del snapshot de calidad rara vez califican.
 - Rotar la key de Finnhub (estuvo en texto plano en un documento ya borrado).
-- Aplicar `migrations/003_transactions.sql` y después `004_transaction_levels.sql` en Supabase (sin ellas el libro, o su stop y take profit, quedan solo en el navegador).
 - Earnings no cubre emisores extranjeros (6-K), como NU.
 - Gate de deuda: si solo falta la deuda corriente se toma como cero; una empresa que la tenga bajo un tag no leído sale con D/E algo subestimado.
 - `MEGACAPS` (`lib/universe.js`) y `GICS_OVERRIDES` (`lib/gics.js`) se mantienen a mano.
