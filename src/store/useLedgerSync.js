@@ -123,10 +123,18 @@ export function useLedgerSync(state, setState) {
   }, []);
 
   useEffect(() => {
+    // Al abrir, al volver la red y al volver a la pestaña: así se ven las
+    // órdenes que Claude Code (ledger:order) u otro navegador subieron.
     const onOnline = () => runSyncRef.current();
+    const onVisible = () => { if (document.visibilityState === "visible") runSyncRef.current(); };
     onOnline();
     window.addEventListener("online", onOnline);
-    return () => { window.removeEventListener("online", onOnline); clearTimeout(timer.current); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearTimeout(timer.current);
+    };
   }, []);
 
   // Conflicto de una cuenta: 'server' descarta lo local; 'local' sube este
